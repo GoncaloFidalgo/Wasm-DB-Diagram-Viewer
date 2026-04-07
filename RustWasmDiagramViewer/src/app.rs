@@ -4,7 +4,7 @@ use egui::*;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 //Default: Preenche com os valores por defeito se não receber do laravel, se for necessário valores diferentes dos default, implementar o Default com as traits
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)]
 pub struct TemplateApp {
     pub tables: Vec<Table>,
@@ -12,16 +12,7 @@ pub struct TemplateApp {
     #[serde(skip)] // Não presistir, não serializar para guardar no laravel
     pub schema_loaded: bool,
 }
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self {
-            tables: vec![],
-            relations: vec![],
-            schema_loaded: false
-        }
-    }
-}
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)]
 pub struct Table {
     pub name: String,
@@ -29,17 +20,7 @@ pub struct Table {
     pub columns: Vec<Column>,
     pub description: String,
 }
-impl Default for Table {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            pos: pos2(0.0, 0.0),
-            columns: vec![],
-            description: String::new(),
-        }
-    }
-}
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)]
 pub struct Column {
     pub name: String,
@@ -49,18 +30,7 @@ pub struct Column {
     pub key_type: String,
 }
 
-impl Default for Column {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            column_type: String::new(),
-            nullable: false,
-            description: String::new(),
-            key_type: String::new(),
-        }
-    }
-}
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize ,Default)]
 #[serde(default)]
 pub struct Connection {
     pub name: String,
@@ -70,17 +40,6 @@ pub struct Connection {
     pub description: String,
 }
 
-impl Default for Connection {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            connection_segments: vec![],
-            tables: [0, 0],
-            columns: [0, 0],
-            description: String::new(),
-        }
-    }
-}
 
 // Constantes para definir cores
 
@@ -203,19 +162,7 @@ impl Table {
 
         Popup::menu(&response)
             .id(ui.id().with(("table_popup", id)))
-            .frame(
-                Frame::new()
-                    .fill(POPUP_BG)
-                    .stroke(Stroke::new(1.0, POPUP_BORDER))
-                    .corner_radius(8.0)
-                    .inner_margin(Margin::same(14))
-                    .shadow(Shadow {
-                        offset: [0, 6],
-                        blur: 18,
-                        spread: 0,
-                        color: Color32::from_black_alpha(90),
-                    }),
-            )
+            .frame(popup_frame())
             .width(260.0)
             .show(|ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
@@ -226,17 +173,7 @@ impl Table {
                         .color(Color32::from_gray(105)),
                 );
                 popup_divider(ui);
-                if self.description.is_empty() {
-                    ui.label(
-                        RichText::new("No description.")
-                            .size(12.5)
-                            .italics()
-                            .color(Color32::from_gray(95)));
-                } else {
-                    ui.label(RichText::new(&self.description)
-                        .size(12.5)
-                        .color(Color32::from_gray(185)));
-                }
+                popup_description(ui, &self.description);
             });
     }
 }
@@ -331,23 +268,10 @@ impl Column {
             painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
             painter.galley(badge_rect.min + pad, null_galley, NULL_TEXT);
         }
-
-
+        
         Popup::menu(&response)
             .id(ui.id().with(("column_popup", table_id, col_id)))
-            .frame(
-                Frame::new()
-                    .fill(POPUP_BG)
-                    .stroke(Stroke::new(1.0, POPUP_BORDER))
-                    .corner_radius(8.0)
-                    .inner_margin(Margin::same(14))
-                    .shadow(Shadow {
-                        offset: [0, 6],
-                        blur: 18,
-                        spread: 0,
-                        color: Color32::from_black_alpha(90),
-                    }),
-            )
+            .frame(popup_frame())
             .width(280.0)
             .show(|ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
@@ -379,23 +303,41 @@ impl Column {
                 });
 
                 popup_divider(ui);
-
-                if self.description.is_empty() {
-                    ui.label(
-                        RichText::new("No description.")
-                            .size(12.5)
-                            .italics()
-                            .color(Color32::from_gray(95)));
-                } else {
-                    ui.label(
-                        RichText::new(&self.description)
-                            .size(12.5)
-                            .color(Color32::from_gray(185)));
-                }
+                popup_description(ui, &self.description);
             });
     }
 }
+fn popup_frame() -> Frame {
+    Frame::new()
+        .fill(POPUP_BG)
+        .stroke(Stroke::new(1.0, POPUP_BORDER))
+        .corner_radius(8.0)
+        .inner_margin(Margin::same(14))
+        .shadow(Shadow {
+            offset: [0, 6],
+            blur: 18,
+            spread: 0,
+            color: Color32::from_black_alpha(90),
+        })
+}
 
+/// Standardized description renderer
+fn popup_description(ui: &mut Ui, description: &str) {
+    if description.is_empty() {
+        ui.label(
+            RichText::new("No description.")
+                .size(12.5)
+                .italics()
+                .color(Color32::from_gray(95))
+        );
+    } else {
+        ui.label(
+            RichText::new(description)
+                .size(12.5)
+                .color(Color32::from_gray(185))
+        );
+    }
+}
 fn popup_divider(ui: &mut Ui) {
     ui.add_space(7.0);
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
@@ -461,120 +403,126 @@ impl TemplateApp {
             }
         }
     }
+
+    fn ui_top_bar(&mut self, ctx: &Context, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
+                *self = Default::default();
+                ctx.memory_mut(|mem| *mem = Default::default());
+            }
+
+            if !self.schema_loaded {
+                ui.label(RichText::new("Nenhum diagrama carregado.").color(Color32::from_rgb(180, 80, 80)));
+            } else {
+                ui.label(RichText::new(format!("{} tabelas", self.tables.len())).color(Color32::from_rgb(80, 180, 80)));
+            }
+        });
+    }
+    fn draw_connections(&mut self, ui: &mut Ui, painter: &Painter) {
+        // Desenhar as linhas
+        let line_width = 2.5;
+        let line_stroke = Stroke::new(line_width, Color32::from_gray(80));
+        for (conn_idx, connection) in self.relations.iter_mut().enumerate() {
+            let (rect_a, rect_b) = ui.ctx().data(|data| {
+                (
+                    data.get_temp::<Rect>(Id::new(("column_rect", connection.tables[0], connection.columns[0]))),
+                    data.get_temp::<Rect>(Id::new(("column_rect", connection.tables[1], connection.columns[1])))
+                )
+            });
+
+            let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                continue;
+            };
+
+            let start = rect_a.center();
+            let end = rect_b.center();
+
+            let mut pts = Vec::new();
+            pts.push(start);
+            if !connection.connection_segments.is_empty() {
+                pts.push(pos2(connection.connection_segments[0], start.y));
+
+                for (i, seg) in connection.connection_segments.windows(2).enumerate() {
+                    pts.push(if i % 2 == 0 {
+                        pos2(seg[0], seg[1]) }
+                    else {
+                        pos2(seg[1], seg[0])
+                    });
+                }
+
+                pts.push(pos2(*connection.connection_segments.last().unwrap(), end.y));
+            }
+
+            pts.push(end);
+            painter.line(pts.clone(), line_stroke);
+
+            for (seg_idx, pair) in pts[1..pts.len() - 1].windows(2).enumerate() {
+                let (p1, p2) = (pair[0], pair[1]);
+                let vertical = seg_idx % 2 == 0;
+                let expand = if vertical { vec2(line_width + 3.0, 0.0) } else { vec2(0.0, line_width + 3.0) };
+
+                let seg_id  = ui.id().with(("seg",   conn_idx, seg_idx));
+                let seg_response = ui.interact(Rect::from_two_pos(p1, p2).expand2(expand), seg_id, Sense::click_and_drag());
+
+                if seg_response.dragged() {
+                    connection.connection_segments[seg_idx] += if vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
+                }
+                if seg_response.hovered() {
+                    painter.line_segment([p1, p2], Stroke::new(line_width, Color32::from_gray(160)));
+                }
+                if seg_response.clicked_by(PointerButton::Secondary) {
+                    let mid = if vertical { (p1.y + p2.y) / 2.0 } else { (p1.x + p2.x) / 2.0 };
+                    let next = if vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 } else { (p2.y + pts[seg_idx + 3].y) / 2.0 };
+                    connection.connection_segments.insert(seg_idx + 1, mid);
+                    connection.connection_segments.insert(seg_idx + 2, next);
+                }
+
+                if seg_idx != 0 {
+                    let pt_id = ui.id().with(("pt", conn_idx, seg_idx));
+                    let pt_response = ui.interact(Rect::from_center_size(p1, vec2(14.0, 14.0)), pt_id, Sense::click_and_drag());
+
+                    let dot_color = if pt_response.dragged() {
+                        connection.connection_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
+                        connection.connection_segments[seg_idx]     += if vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
+                        Color32::from_gray(140)
+                    } else if pt_response.hovered() {
+                        Color32::from_gray(170)
+                    } else {
+                        Color32::from_gray(75)
+                    };
+
+                    if pt_response.clicked_by(PointerButton::Secondary) {
+                        connection.connection_segments.remove(seg_idx);
+                        connection.connection_segments.remove(seg_idx - 1);
+                    }
+
+                    painter.circle_filled(p1, 4.5, dot_color);
+                }
+            }
+
+            painter.circle_filled(pts[1],              4.5, Color32::from_gray(75));
+            painter.circle_filled(pts[pts.len() - 2],  4.5, Color32::from_gray(75));
+        }
+    }
 }
 
 impl eframe::App for TemplateApp {
     /// Chamada sempre que o UI necessita de ser desenhado outra vez (60x por segundo)
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
-                    *self = Default::default();
-                    ctx.memory_mut(|mem| *mem = Default::default());
-                }
+            self.ui_top_bar(ctx, ui);
 
-                if !self.schema_loaded {
-                    ui.label(RichText::new("Nenhum diagrama carregado.").color(Color32::from_rgb(180, 80, 80)));
-                } else {
-                    ui.label(RichText::new(format!("{} tabelas", self.tables.len())).color(Color32::from_rgb(80, 180, 80)));
-                }
-            });
             ui.separator();
 
-            let (_response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                Sense::click(),
-            );
+            let (_response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
                 table.ui(ctx, i);
             }
 
-            // Desenhar as linhas
-            let line_width = 2.5;
-            let line_stroke = Stroke::new(line_width, Color32::from_gray(80));
-            for (conn_idx, connection) in self.relations.iter_mut().enumerate() {
-                let (rect_a, rect_b) = ui.ctx().data(|data| {
-                    (
-                        data.get_temp::<Rect>(Id::new(("column_rect", connection.tables[0], connection.columns[0]))),
-                        data.get_temp::<Rect>(Id::new(("column_rect", connection.tables[1], connection.columns[1])))
-                    )
-                });
-
-                let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                    continue;
-                };
-
-                let start = rect_a.center();
-                let end = rect_b.center();
-
-                let mut pts = Vec::new();
-                pts.push(start);
-                if !connection.connection_segments.is_empty() {
-                    pts.push(pos2(connection.connection_segments[0], start.y));
-
-                    for (i, seg) in connection.connection_segments.windows(2).enumerate() {
-                        pts.push(if i % 2 == 0 {
-                            pos2(seg[0], seg[1]) }
-                        else {
-                            pos2(seg[1], seg[0])
-                        });
-                    }
-
-                    pts.push(pos2(*connection.connection_segments.last().unwrap(), end.y));
-                }
-
-                pts.push(end);
-                painter.line(pts.clone(), line_stroke);
-
-                for (seg_idx, pair) in pts[1..pts.len() - 1].windows(2).enumerate() {
-                    let (p1, p2) = (pair[0], pair[1]);
-                    let vertical = seg_idx % 2 == 0;
-                    let expand = if vertical { vec2(line_width + 3.0, 0.0) } else { vec2(0.0, line_width + 3.0) };
-
-                    let seg_id  = ui.id().with(("seg",   conn_idx, seg_idx));
-                    let seg_response = ui.interact(Rect::from_two_pos(p1, p2).expand2(expand), seg_id, Sense::click_and_drag());
-
-                    if seg_response.dragged() {
-                        connection.connection_segments[seg_idx] += if vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
-                    }
-                    if seg_response.hovered() {
-                        painter.line_segment([p1, p2], Stroke::new(line_width, Color32::from_gray(160)));
-                    }
-                    if seg_response.clicked_by(PointerButton::Secondary) {
-                        let mid = if vertical { (p1.y + p2.y) / 2.0 } else { (p1.x + p2.x) / 2.0 };
-                        let next = if vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 } else { (p2.y + pts[seg_idx + 3].y) / 2.0 };
-                        connection.connection_segments.insert(seg_idx + 1, mid);
-                        connection.connection_segments.insert(seg_idx + 2, next);
-                    }
-
-                    if seg_idx != 0 {
-                        let pt_id = ui.id().with(("pt", conn_idx, seg_idx));
-                        let pt_response = ui.interact(Rect::from_center_size(p1, vec2(14.0, 14.0)), pt_id, Sense::click_and_drag());
-
-                        let dot_color = if pt_response.dragged() {
-                            connection.connection_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
-                            connection.connection_segments[seg_idx]     += if vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
-                            Color32::from_gray(140)
-                        } else if pt_response.hovered() {
-                            Color32::from_gray(170)
-                        } else {
-                            Color32::from_gray(75)
-                        };
-
-                        if pt_response.clicked_by(PointerButton::Secondary) {
-                            connection.connection_segments.remove(seg_idx);
-                            connection.connection_segments.remove(seg_idx - 1);
-                        }
-
-                        painter.circle_filled(p1, 4.5, dot_color);
-                    }
-                }
-
-                painter.circle_filled(pts[1],              4.5, Color32::from_gray(75));
-                painter.circle_filled(pts[pts.len() - 2],  4.5, Color32::from_gray(75));
-            }
+            // Desenhar as linhas das conexões
+            self.draw_connections(ui, &painter);
         });
     }
 
