@@ -8,7 +8,7 @@ use egui::*;
 #[serde(default)]
 pub struct TemplateApp {
     pub tables: Vec<Table>,
-    pub relations: Vec<Connection>,
+    pub relations: Vec<Relation>,
     #[serde(skip)] // Não presistir, não serializar para guardar no laravel
     pub schema_loaded: bool,
 }
@@ -32,9 +32,9 @@ pub struct Column {
 
 #[derive(serde::Deserialize, serde::Serialize ,Default)]
 #[serde(default)]
-pub struct Connection {
+pub struct Relation {
     pub name: String,
-    pub connection_segments: Vec<f32>,
+    pub relation_segments: Vec<f32>,
     pub tables: [usize; 2],
     pub columns: [usize; 2],
     pub description: String,
@@ -385,20 +385,20 @@ impl TemplateApp {
             }
         }
 
-        for connection in &mut self.relations {
+        for relation in &mut self.relations {
             // Verificar se existem segmentos para nao crashar
-            if connection.connection_segments.is_empty() {
-                let t1_idx = connection.tables[0];
-                let t2_idx = connection.tables[1];
+            if relation.relation_segments.is_empty() {
+                let t1_idx = relation.tables[0];
+                let t2_idx = relation.tables[1];
 
                 // Cuidado com out of bounds
                 //panicked at src\app.rs:466:61:
                 //index out of bounds: the len is 0 but the index is 0
                 if t1_idx < self.tables.len() && t2_idx < self.tables.len() {
                     let mid_x = (self.tables[t1_idx].pos.x + self.tables[t2_idx].pos.x) / 2.0;
-                    connection.connection_segments.push(mid_x);
+                    relation.relation_segments.push(mid_x);
                 } else {
-                    connection.connection_segments.push(100.0);
+                    relation.relation_segments.push(100.0);
                 }
             }
         }
@@ -418,15 +418,16 @@ impl TemplateApp {
             }
         });
     }
-    fn draw_connections(&mut self, ui: &mut Ui, painter: &Painter) {
+    
+    fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter) {
         // Desenhar as linhas
         let line_width = 2.5;
         let line_stroke = Stroke::new(line_width, Color32::from_gray(80));
-        for (conn_idx, connection) in self.relations.iter_mut().enumerate() {
+        for (conn_idx, relation) in self.relations.iter_mut().enumerate() {
             let (rect_a, rect_b) = ui.ctx().data(|data| {
                 (
-                    data.get_temp::<Rect>(Id::new(("column_rect", connection.tables[0], connection.columns[0]))),
-                    data.get_temp::<Rect>(Id::new(("column_rect", connection.tables[1], connection.columns[1])))
+                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
                 )
             });
 
@@ -439,10 +440,10 @@ impl TemplateApp {
 
             let mut pts = Vec::new();
             pts.push(start);
-            if !connection.connection_segments.is_empty() {
-                pts.push(pos2(connection.connection_segments[0], start.y));
+            if !relation.relation_segments.is_empty() {
+                pts.push(pos2(relation.relation_segments[0], start.y));
 
-                for (i, seg) in connection.connection_segments.windows(2).enumerate() {
+                for (i, seg) in relation.relation_segments.windows(2).enumerate() {
                     pts.push(if i % 2 == 0 {
                         pos2(seg[0], seg[1]) }
                     else {
@@ -450,7 +451,7 @@ impl TemplateApp {
                     });
                 }
 
-                pts.push(pos2(*connection.connection_segments.last().unwrap(), end.y));
+                pts.push(pos2(*relation.relation_segments.last().unwrap(), end.y));
             }
 
             pts.push(end);
@@ -465,7 +466,7 @@ impl TemplateApp {
                 let seg_response = ui.interact(Rect::from_two_pos(p1, p2).expand2(expand), seg_id, Sense::click_and_drag());
 
                 if seg_response.dragged() {
-                    connection.connection_segments[seg_idx] += if vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
+                    relation.relation_segments[seg_idx] += if vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
                 }
                 if seg_response.hovered() {
                     painter.line_segment([p1, p2], Stroke::new(line_width, Color32::from_gray(160)));
@@ -473,8 +474,8 @@ impl TemplateApp {
                 if seg_response.clicked_by(PointerButton::Secondary) {
                     let mid = if vertical { (p1.y + p2.y) / 2.0 } else { (p1.x + p2.x) / 2.0 };
                     let next = if vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 } else { (p2.y + pts[seg_idx + 3].y) / 2.0 };
-                    connection.connection_segments.insert(seg_idx + 1, mid);
-                    connection.connection_segments.insert(seg_idx + 2, next);
+                    relation.relation_segments.insert(seg_idx + 1, mid);
+                    relation.relation_segments.insert(seg_idx + 2, next);
                 }
 
                 if seg_idx != 0 {
@@ -482,8 +483,8 @@ impl TemplateApp {
                     let pt_response = ui.interact(Rect::from_center_size(p1, vec2(14.0, 14.0)), pt_id, Sense::click_and_drag());
 
                     let dot_color = if pt_response.dragged() {
-                        connection.connection_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
-                        connection.connection_segments[seg_idx]     += if vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
+                        relation.relation_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
+                        relation.relation_segments[seg_idx]     += if vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
                         Color32::from_gray(140)
                     } else if pt_response.hovered() {
                         Color32::from_gray(170)
@@ -492,8 +493,8 @@ impl TemplateApp {
                     };
 
                     if pt_response.clicked_by(PointerButton::Secondary) {
-                        connection.connection_segments.remove(seg_idx);
-                        connection.connection_segments.remove(seg_idx - 1);
+                        relation.relation_segments.remove(seg_idx);
+                        relation.relation_segments.remove(seg_idx - 1);
                     }
 
                     painter.circle_filled(p1, 4.5, dot_color);
@@ -521,8 +522,8 @@ impl eframe::App for TemplateApp {
                 table.ui(ctx, i);
             }
 
-            // Desenhar as linhas das conexões
-            self.draw_connections(ui, &painter);
+            // Desenhar as linhas das relações
+            self.draw_relations(ui, &painter);
         });
     }
 
