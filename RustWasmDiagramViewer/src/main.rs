@@ -50,7 +50,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(rust_wasm_diagram_viewer::TemplateApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(rust_wasm_diagram_viewer::TemplateApp::new(cc, String::new())))),
             )
             .await;
 
