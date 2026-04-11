@@ -1,12 +1,15 @@
 # Use the official PHP 8.2 Apache image
 FROM php:8.4-apache
 
-# Install PostgreSQL drivers and system dependencies required by Laravel
+# Install PostgreSQL drivers, Zip, Git, AND Node.js (for Vite/Tailwind)
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     zip \
     unzip \
     git \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && docker-php-ext-install pdo pdo_pgsql pgsql
 
 # Enable Apache mod_rewrite for Laravel routing
@@ -25,6 +28,9 @@ COPY . /var/www/html
 
 # Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
+
+# Install NPM dependencies and build the frontend (Tailwind/Livewire)
+RUN npm install && npm run build
 
 # Give Apache permission to write to the storage and cache folders
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
