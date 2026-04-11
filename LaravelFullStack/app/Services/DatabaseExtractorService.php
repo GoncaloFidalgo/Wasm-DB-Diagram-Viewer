@@ -85,8 +85,8 @@ class DatabaseExtractorService
                         $schema['relations'][] = [
                             'name' => "{$tableName}_{$fk->table}",
                             'connection_segments' => [],
-                            'tables' => [$fromTableIdx, $toTableIdx],   // Maps to Rust: pub tables: [usize; 2]
-                            'columns' => [$fromColIdx, $toColIdx],      // Maps to Rust: pub columns: [usize; 2]
+                            'tables' => [$fromTableIdx, $toTableIdx],   // Rust: pub tables: [usize; 2]
+                            'columns' => [$fromColIdx, $toColIdx],      // Rust: pub columns: [usize; 2]
                             'description' => "FK: {$tableName}.{$fk->from} -> {$fk->table}.{$fk->to}"
                         ];
                     }
