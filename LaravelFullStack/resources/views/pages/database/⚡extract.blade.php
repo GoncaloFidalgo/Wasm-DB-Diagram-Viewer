@@ -53,9 +53,9 @@ new #[Layout('layouts::app')] class extends Component {
 
     <form wire:submit="extractSchema" class="flex flex-col space-y-4 max-w-md">
         <div>
-            <label for="filePath" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                Caminho do ficheiro
-            </label>
+{{--            <label for="filePath" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">--}}
+{{--                Caminho do ficheiro--}}
+{{--            </label>--}}
         {{--    <input
                 type="text"
                 id="filePath"
