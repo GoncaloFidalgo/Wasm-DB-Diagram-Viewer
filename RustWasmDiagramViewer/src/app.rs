@@ -160,7 +160,7 @@ const COL_SIZE: f32 = 26.0;
 // --- Implementações das estruturas ---
 
 impl Table {
-    pub fn ui(&mut self, ctx: &Context, id: usize) {
+    pub fn ui(&mut self, ctx: &Context, id: usize, relations: &mut Vec<Relation>) {
         let area_response = Area::new(Id::new(("table", id)))
             .constrain(false)
             .movable(true)
@@ -225,6 +225,24 @@ impl Table {
         
         if area_response.response.dragged() {
             ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+        }
+        if area_response.response.drag_stopped() {
+            for relation in relations {
+                if relation.tables[0] == id || relation.tables[1] == id {
+                    let (rect_a, rect_b) = ctx.data(|data| {
+                        (
+                            data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                            data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                        )
+                    });
+
+                    let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                        continue;
+                    };
+
+                    verify_line_segment_joins(&mut relation.relation_segments, 0, rect_a.center().y, rect_b.center().y);
+                }
+            }
         }
 
         self.pos = area_response.response.rect.min;
@@ -611,7 +629,7 @@ impl TemplateApp {
                     relation.relation_segments.insert(seg_idx + 2, next);
                 }
                 if seg_response.drag_stopped() {
-                    Self::verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                    verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
                 }
 
                 if seg_idx != 0 {
@@ -646,8 +664,8 @@ impl TemplateApp {
                     }
 
                     if pt_response.drag_stopped() {
-                        Self::verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
-                        Self::verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
+                        verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                        verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
                     }
 
                     painter.circle_filled(p1, 4.5, dot_color);
@@ -657,39 +675,6 @@ impl TemplateApp {
             painter.circle_filled(pts[1],              4.5, Color32::from_gray(75));
             painter.circle_filled(pts[pts.len() - 2],  4.5, Color32::from_gray(75));
         }
-    }
-
-    fn verify_line_segment_joins(segments: &mut Vec<f32>, seg_idx: usize, start_height: f32, end_height: f32) {
-        const LINE_JOIN_LIMIT: f32 = 10.0;
-
-        if seg_idx + 2 < segments.len() {
-            if (segments[seg_idx] - segments[seg_idx + 2]).abs() < LINE_JOIN_LIMIT {
-                segments.remove(seg_idx + 2);
-                segments.remove(seg_idx + 1);
-            }
-        }
-        if seg_idx >= 2 && seg_idx < segments.len() {
-            if (segments[seg_idx] - segments[seg_idx - 2]).abs() < LINE_JOIN_LIMIT {
-                segments.remove(seg_idx - 1);
-                segments.remove(seg_idx - 2);
-            }
-        }
-
-        if segments.len() < 3 {
-            return;
-        }
-        if (segments[segments.len()-2] - end_height).abs() < LINE_JOIN_LIMIT {
-            segments.pop();
-            segments.pop();
-        }
-        if segments.len() < 3 {
-            return;
-        }
-        if (segments[1] - start_height).abs() < LINE_JOIN_LIMIT {
-            segments.remove(1);
-            segments.remove(0);
-        }
-        //TODO fazer com que se chame esta funcao ao mover uma tabela
     }
 }
 
@@ -705,7 +690,7 @@ impl eframe::App for TemplateApp {
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
-                table.ui(ctx, i);
+                table.ui(ctx, i, &mut self.relations);
             }
 
             // Desenhar as linhas das relações
@@ -716,5 +701,37 @@ impl eframe::App for TemplateApp {
     /// Guarda o estado da app antes de ser terminada
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+}
+
+fn verify_line_segment_joins(segments: &mut Vec<f32>, seg_idx: usize, start_height: f32, end_height: f32) {
+    const LINE_JOIN_LIMIT: f32 = 10.0;
+
+    if seg_idx + 2 < segments.len() {
+        if (segments[seg_idx] - segments[seg_idx + 2]).abs() < LINE_JOIN_LIMIT {
+            segments.remove(seg_idx + 2);
+            segments.remove(seg_idx + 1);
+        }
+    }
+    if seg_idx >= 2 && seg_idx < segments.len() {
+        if (segments[seg_idx] - segments[seg_idx - 2]).abs() < LINE_JOIN_LIMIT {
+            segments.remove(seg_idx - 1);
+            segments.remove(seg_idx - 2);
+        }
+    }
+
+    if segments.len() < 3 {
+        return;
+    }
+    if (segments[segments.len()-2] - end_height).abs() < LINE_JOIN_LIMIT {
+        segments.pop();
+        segments.pop();
+    }
+    if segments.len() < 3 {
+        return;
+    }
+    if (segments[1] - start_height).abs() < LINE_JOIN_LIMIT {
+        segments.remove(1);
+        segments.remove(0);
     }
 }
