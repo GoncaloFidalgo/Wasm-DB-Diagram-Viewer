@@ -4,13 +4,108 @@ use egui::*;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 //Default: Preenche com os valores por defeito se não receber do laravel, se for necessário valores diferentes dos default, implementar o Default com as traits
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct TemplateApp {
     pub tables: Vec<Table>,
     pub relations: Vec<Relation>,
     #[serde(skip)] // Não presistir, não serializar para guardar no laravel
     pub schema_loaded: bool,
+}
+impl Default for TemplateApp {
+    fn default() -> Self {
+        Self {
+            tables: vec![
+                Table {
+                    name: String::from("primeira"),
+                    pos: pos2(200.0, 200.0),
+                    columns: vec![
+                        Column {
+                            name: String::from("id"),
+                            column_type: String::from("NUMBER"),
+                            nullable: false,
+                            key_type: String::from("PK"),
+                            description: String::new()
+                        },
+                        Column {
+                            name: String::from("name"),
+                            column_type: String::from("VARCHAR2"),
+                            nullable: false,
+                            key_type: String::new(),
+                            description: String::new()
+                        }
+                    ],
+                    description: String::new()
+                },
+                Table {
+                    name: String::from("segunda"),
+                    pos: pos2(700.0, 300.0),
+                    columns: vec![
+                        Column {
+                            name: String::from("id"),
+                            column_type: String::from("NUMBER"),
+                            nullable: false,
+                            key_type: String::from("PK"),
+                            description: String::new()
+                        },
+                        Column {
+                            name: String::from("primeira_id"),
+                            column_type: String::from("NUMBER"),
+                            nullable: false,
+                            key_type: String::from("FK"),
+                            description: String::new()
+                        },
+                        Column {
+                            name: String::from("segunda_id"),
+                            column_type: String::from("NUMBER"),
+                            nullable: false,
+                            key_type: String::from("FK"),
+                            description: String::new()
+                        }
+                    ],
+                    description: String::new()
+                },
+                Table {
+                    name: String::from("terceira"),
+                    pos: pos2(300.0, 400.0),
+                    columns: vec![
+                        Column {
+                            name: String::from("id"),
+                            column_type: String::from("NUMBER"),
+                            nullable: false,
+                            key_type: String::from("PK"),
+                            description: String::new()
+                        },
+                        Column {
+                            name: String::from("idade"),
+                            column_type: String::from("NUMBER"),
+                            nullable: true,
+                            key_type: String::new(),
+                            description: String::new()
+                        }
+                    ],
+                    description: String::new()
+                }
+            ],
+            relations: vec![
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![450.0],
+                    tables: [1, 0],
+                    columns: [1, 0],
+                    description: String::new()
+                },
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![],
+                    tables: [1, 2],
+                    columns: [2, 0],
+                    description: String::new()
+                }
+            ],
+            schema_loaded: false
+        }
+    }
 }
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)]
@@ -34,7 +129,7 @@ pub struct Column {
 #[serde(default)]
 pub struct Relation {
     pub name: String,
-    pub relation_segments: Vec<f32>,
+    pub relation_segments: Vec<f32>, // If empty, auto align
     pub tables: [usize; 2],
     pub columns: [usize; 2],
     pub description: String,
@@ -69,6 +164,7 @@ impl Table {
         let area_response = Area::new(Id::new(("table", id)))
             .constrain(false)
             .movable(true)
+            .pivot(Align2::CENTER_CENTER)
             .default_pos(self.pos)
             .show(ctx, |ui| {
                 let table_width = ui.fonts_mut(|f| {
@@ -118,7 +214,7 @@ impl Table {
                     })
                     .show(ui, |ui| {
                         ui.set_width(table_width);
-                        self.header_ui(ui, id);
+                        self.header_ui(ui);
                         ui.add_space(2.0);
                         for (col_idx, column) in self.columns.iter().enumerate() {
                             column.ui(ui, id, col_idx);
@@ -126,11 +222,15 @@ impl Table {
                         ui.add_space(6.0);
                     });
             });
+        
+        if area_response.response.dragged() {
+            ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+        }
 
         self.pos = area_response.response.rect.min;
     }
 
-    fn header_ui(&mut self, ui: &mut Ui, id: usize) {
+    fn header_ui(&mut self, ui: &mut Ui) {
         let (rect, response) = ui.allocate_exact_size(
             vec2(ui.available_width(), HEADER_SIZE),
             Sense::click(),
@@ -161,7 +261,6 @@ impl Table {
         );
 
         Popup::menu(&response)
-            .id(ui.id().with(("table_popup", id)))
             .frame(popup_frame())
             .width(260.0)
             .show(|ui| {
@@ -270,7 +369,6 @@ impl Column {
         }
         
         Popup::menu(&response)
-            .id(ui.id().with(("column_popup", table_id, col_id)))
             .frame(popup_frame())
             .width(280.0)
             .show(|ui| {
@@ -376,30 +474,12 @@ impl TemplateApp {
         let needs_layout = self.tables.first().map_or(false, |t| t.pos == pos2(0.0, 0.0));
 
         if needs_layout {
-            let mut x = 50.0;
-            let mut y = 50.0;
+            let mut x = 100.0;
+            let mut y = 100.0;
             for table in &mut self.tables {
                 table.pos = pos2(x, y);
                 x += 350.0;
                 if x > 1200.0 { x = 50.0; y += 350.0; }
-            }
-        }
-
-        for relation in &mut self.relations {
-            // Verificar se existem segmentos para nao crashar
-            if relation.relation_segments.is_empty() {
-                let t1_idx = relation.tables[0];
-                let t2_idx = relation.tables[1];
-
-                // Cuidado com out of bounds
-                //panicked at src\app.rs:466:61:
-                //index out of bounds: the len is 0 but the index is 0
-                if t1_idx < self.tables.len() && t2_idx < self.tables.len() {
-                    let mid_x = (self.tables[t1_idx].pos.x + self.tables[t2_idx].pos.x) / 2.0;
-                    relation.relation_segments.push(mid_x);
-                } else {
-                    relation.relation_segments.push(100.0);
-                }
             }
         }
     }
@@ -421,9 +501,10 @@ impl TemplateApp {
     
     fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter) {
         // Desenhar as linhas
-        let line_width = 2.5;
-        let line_stroke = Stroke::new(line_width, Color32::from_gray(80));
-        for (conn_idx, relation) in self.relations.iter_mut().enumerate() {
+        const LINE_WIDTH: f32 = 2.5;
+        const TABLE_PROXIMITY_LIMIT: f32 = 20.0;
+        let line_stroke: Stroke = Stroke::new(LINE_WIDTH, Color32::from_gray(80));
+        for (rela_idx, relation) in self.relations.iter_mut().enumerate() {
             let (rect_a, rect_b) = ui.ctx().data(|data| {
                 (
                     data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
@@ -435,12 +516,18 @@ impl TemplateApp {
                 continue;
             };
 
+            let auto_align = relation.relation_segments.is_empty();
+
             let start = rect_a.center();
+            let start_offset = rect_a.width()/2.0;
             let end = rect_b.center();
+            let end_offset = rect_b.width()/2.0;
+
+            let x_align = (start.x + end.x)/2.0;
 
             let mut pts = Vec::new();
             pts.push(start);
-            if !relation.relation_segments.is_empty() {
+            if !auto_align {
                 pts.push(pos2(relation.relation_segments[0], start.y));
 
                 for (i, seg) in relation.relation_segments.windows(2).enumerate() {
@@ -452,35 +539,96 @@ impl TemplateApp {
                 }
 
                 pts.push(pos2(*relation.relation_segments.last().unwrap(), end.y));
+            } else {
+                pts.push(pos2(x_align, start.y));
+                pts.push(pos2(x_align, end.y));
             }
-
             pts.push(end);
+
+            // Change line position based on tables x and draw notation
+            let last_idx = pts.len()-1;
+            let enough_space = (start.x-end.x).abs() > start_offset + end_offset + TABLE_PROXIMITY_LIMIT*2.0;
+
+            // First table
+            let left_line = if enough_space {pts[0].x} else {x_align} > pts[1].x;
+            pts[0].x += if left_line {-start_offset} else {start_offset};
+            let new_x = if left_line {pts[1].x.min(pts[0].x-TABLE_PROXIMITY_LIMIT)}
+                else {pts[1].x.max(pts[0].x+TABLE_PROXIMITY_LIMIT)};
+            pts[1].x = new_x;
+            pts[2].x = new_x;
+            // Draw many (FK) notation
+            painter.line_segment([pts[0] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/2.0, 0.0),
+                pts[0] + vec2(0.0, 5.0)], line_stroke);
+            painter.line_segment([pts[0] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/2.0, 0.0),
+                pts[0] + vec2(0.0, -5.0)], line_stroke);
+
+            // Second table
+            let left_line = if enough_space {pts[last_idx].x} else {x_align} > pts[last_idx-1].x;
+            pts[last_idx].x += if left_line {-end_offset} else {end_offset};
+            let new_x = if left_line {pts[last_idx-1].x.min(pts[last_idx].x-TABLE_PROXIMITY_LIMIT)}
+                else {pts[last_idx-1].x.max(pts[last_idx].x+TABLE_PROXIMITY_LIMIT)};
+            pts[last_idx-1].x = new_x;
+            pts[last_idx-2].x = new_x;
+            // Draw one (PK) notation
+            painter.line_segment([pts[last_idx] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/3.0, 5.0),
+                pts[last_idx] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/3.0, -5.0)], line_stroke);
+
+            // Draw hole path relation
             painter.line(pts.clone(), line_stroke);
 
             for (seg_idx, pair) in pts[1..pts.len() - 1].windows(2).enumerate() {
                 let (p1, p2) = (pair[0], pair[1]);
                 let vertical = seg_idx % 2 == 0;
-                let expand = if vertical { vec2(line_width + 3.0, 0.0) } else { vec2(0.0, line_width + 3.0) };
+                let expand = if vertical { vec2(LINE_WIDTH + 3.0, 0.0) } else { vec2(0.0, LINE_WIDTH + 3.0) };
 
-                let seg_id  = ui.id().with(("seg",   conn_idx, seg_idx));
+                let seg_id  = ui.id().with(("seg",   rela_idx, seg_idx));
                 let seg_response = ui.interact(Rect::from_two_pos(p1, p2).expand2(expand), seg_id, Sense::click_and_drag());
+                
+                let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
+                Popup::menu(&seg_response).id(popup_id).show(|ui| {
+                    if ui.button("⟳").clicked() {
+                        relation.relation_segments.clear();
+                    }
+                });
+                if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
+                    if auto_align {
+                        relation.relation_segments.push(seg_response.rect.center().x);
+                    }
+                    relation.relation_segments[seg_idx] = if vertical {seg_response.rect.center().x} else {seg_response.rect.center().y};
+                    Popup::open_id(ui.ctx(), popup_id);
+                }
 
                 if seg_response.dragged() {
                     relation.relation_segments[seg_idx] += if vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
                 }
                 if seg_response.hovered() {
-                    painter.line_segment([p1, p2], Stroke::new(line_width, Color32::from_gray(160)));
+                    painter.line_segment([p1, p2], Stroke::new(LINE_WIDTH, Color32::from_gray(160)));
                 }
-                if seg_response.clicked_by(PointerButton::Secondary) {
+                if seg_response.secondary_clicked() {
                     let mid = if vertical { (p1.y + p2.y) / 2.0 } else { (p1.x + p2.x) / 2.0 };
                     let next = if vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 } else { (p2.y + pts[seg_idx + 3].y) / 2.0 };
                     relation.relation_segments.insert(seg_idx + 1, mid);
                     relation.relation_segments.insert(seg_idx + 2, next);
                 }
+                if seg_response.drag_stopped() {
+                    Self::verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                }
 
                 if seg_idx != 0 {
-                    let pt_id = ui.id().with(("pt", conn_idx, seg_idx));
+                    let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
                     let pt_response = ui.interact(Rect::from_center_size(p1, vec2(14.0, 14.0)), pt_id, Sense::click_and_drag());
+
+                    let popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
+                    Popup::menu(&pt_response).id(popup_id).show(|ui| {
+                        if ui.button("⟳").clicked() {
+                            relation.relation_segments.clear();
+                        }
+                    });
+                    if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
+                        relation.relation_segments[seg_idx - 1] = if vertical {pt_response.rect.center().y} else {pt_response.rect.center().x};
+                        relation.relation_segments[seg_idx]     = if vertical {pt_response.rect.center().x} else {pt_response.rect.center().y};
+                        Popup::open_id(ui.ctx(), popup_id);
+                    }
 
                     let dot_color = if pt_response.dragged() {
                         relation.relation_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
@@ -492,9 +640,14 @@ impl TemplateApp {
                         Color32::from_gray(75)
                     };
 
-                    if pt_response.clicked_by(PointerButton::Secondary) {
+                    if pt_response.secondary_clicked() {
                         relation.relation_segments.remove(seg_idx);
                         relation.relation_segments.remove(seg_idx - 1);
+                    }
+
+                    if pt_response.drag_stopped() {
+                        Self::verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                        Self::verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
                     }
 
                     painter.circle_filled(p1, 4.5, dot_color);
@@ -504,6 +657,39 @@ impl TemplateApp {
             painter.circle_filled(pts[1],              4.5, Color32::from_gray(75));
             painter.circle_filled(pts[pts.len() - 2],  4.5, Color32::from_gray(75));
         }
+    }
+
+    fn verify_line_segment_joins(segments: &mut Vec<f32>, seg_idx: usize, start_height: f32, end_height: f32) {
+        const LINE_JOIN_LIMIT: f32 = 10.0;
+
+        if seg_idx + 2 < segments.len() {
+            if (segments[seg_idx] - segments[seg_idx + 2]).abs() < LINE_JOIN_LIMIT {
+                segments.remove(seg_idx + 2);
+                segments.remove(seg_idx + 1);
+            }
+        }
+        if seg_idx >= 2 && seg_idx < segments.len() {
+            if (segments[seg_idx] - segments[seg_idx - 2]).abs() < LINE_JOIN_LIMIT {
+                segments.remove(seg_idx - 1);
+                segments.remove(seg_idx - 2);
+            }
+        }
+
+        if segments.len() < 3 {
+            return;
+        }
+        if (segments[segments.len()-2] - end_height).abs() < LINE_JOIN_LIMIT {
+            segments.pop();
+            segments.pop();
+        }
+        if segments.len() < 3 {
+            return;
+        }
+        if (segments[1] - start_height).abs() < LINE_JOIN_LIMIT {
+            segments.remove(1);
+            segments.remove(0);
+        }
+        //TODO fazer com que se chame esta funcao ao mover uma tabela
     }
 }
 
