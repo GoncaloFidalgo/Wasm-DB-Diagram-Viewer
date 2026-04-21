@@ -1,16 +1,19 @@
-# Use the official PHP 8.2 Apache image
+# Use the official PHP 8.4 Apache image
 FROM php:8.4-apache
 
-# Install PostgreSQL drivers, Zip, Git, AND Node.js (for Vite/Tailwind)
+# Install PostgreSQL drivers, intl, Zip, Git, AND Node.js (for Vite/Tailwind)
 RUN apt-get update && apt-get install -y \
     libpq-dev \
+    libicu-dev \
+    libzip-dev \
     zip \
     unzip \
     git \
     curl \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && docker-php-ext-install pdo pdo_pgsql pgsql
+    && docker-php-ext-configure intl \
+    && docker-php-ext-install intl zip pdo pdo_pgsql pgsql
 
 # Enable Apache mod_rewrite for Laravel routing
 RUN a2enmod rewrite
