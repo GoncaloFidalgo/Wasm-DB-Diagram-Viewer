@@ -8,7 +8,7 @@ mod wasm {
     use super::TemplateApp;
     use wasm_bindgen::{self, prelude::*};
     use std::sync::{Arc, Mutex};
-
+ 
     #[wasm_bindgen]
     pub struct WebHandle {
         runner: eframe::WebRunner,
@@ -52,5 +52,6 @@ mod wasm {
                 *state = json_data.to_string();
             }
         }
+
     }
 }
