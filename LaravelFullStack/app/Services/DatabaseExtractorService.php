@@ -7,16 +7,64 @@ use Illuminate\Support\Facades\Config;
 
 class DatabaseExtractorService
 {
-    public function extractSqlite(string $filePath): string
+    /**
+     * Step 1: Extract ONLY the tables and columns.
+     * This returns a raw PHP array to be used by the Filament UI.
+     */
+    public function extractAllTables(string $filePath): array
     {
-        // Alterar a configuração do sqlite
-        Config::set('database.connections.sqlite', [
-            'driver' => 'sqlite',
-            'database' => $filePath,
-            'foreign_key_constraints' => true,
-        ]);
+        $this->connectSqlite($filePath);
+        $db = DB::connection('sqlite');
 
-        // Conectar o laravel à base de dados
+        $tablesData = [];
+        $tables = $db->select("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+
+        foreach ($tables as $table) {
+            $tableName = $table->name;
+
+            $foreignKeys = $db->select("PRAGMA foreign_key_list('{$tableName}')");
+            $fkColumnNames = array_map(fn($fk) => $fk->from, $foreignKeys);
+
+            $columns = $db->select("PRAGMA table_info('{$tableName}')");
+            $formattedColumns = [];
+
+            foreach ($columns as $column) {
+                $columnName = $column->name;
+
+                $keyType = '';
+                if ($column->pk) {
+                    $keyType = 'PK';
+                } elseif (in_array($columnName, $fkColumnNames)) {
+                    $keyType = 'FK';
+                }
+
+                $formattedColumns[] = [
+                    'name' => $columnName,
+                    'column_type' => $column->type,
+                    'nullable' => !$column->notnull,
+                    'description' => '',
+                    'key_type' => $keyType,
+                ];
+            }
+
+            $tablesData[] = [
+                'name' => $tableName,
+                'columns' => $formattedColumns,
+            ];
+        }
+
+        DB::purge('sqlite');
+
+        return $tablesData;
+    }
+
+    /**
+     * Step 2: Build the final JSON schema for Rust.
+     * This calculates the strict 0-indexed positions for ONLY the selected tables.
+     */
+    public function buildDiagramSchema(string $filePath, array $selectedTableNames): string
+    {
+        $this->connectSqlite($filePath);
         $db = DB::connection('sqlite');
 
         $schema = [
@@ -27,22 +75,21 @@ class DatabaseExtractorService
         $tableIndices = [];
         $columnIndices = [];
 
-        // Obter as tabelas
-        // https://stackoverflow.com/questions/37931929/laravel-php-artisan-tinker-how-to-view-all-tables-in-sqlite-database
-        // $db->select("PRAGMA table_list")
-        $tables = $db->select("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-
-        // https://www.sqlite.org/pragma.html#pragma_table_info
-        foreach ($tables as $tIndex => $table) {
-            $tableName = $table->name;
-            $tableIndices[$tableName] = $tIndex;
-
+        // ---------------------------------------------------------
+        // PASS 1: Build the Tables Array and calculate the NEW indices
+        // ---------------------------------------------------------
+        $tIndex = 0;
+        foreach ($selectedTableNames as $tableName) {
             $foreignKeys = $db->select("PRAGMA foreign_key_list('{$tableName}')");
             $fkColumnNames = array_map(fn($fk) => $fk->from, $foreignKeys);
 
-            // Obter e formatar colunas
             $columns = $db->select("PRAGMA table_info('{$tableName}')");
+
+            if (empty($columns)) continue;
+
+            $tableIndices[$tableName] = $tIndex;
             $formattedColumns = [];
+
             foreach ($columns as $cIndex => $column) {
                 $columnName = $column->name;
                 $columnIndices[$tableName][$columnName] = $cIndex;
@@ -63,33 +110,39 @@ class DatabaseExtractorService
                 ];
             }
 
-            // Adicionar tabela e colunas à lista de tabelas
             $schema['tables'][] = [
                 'name' => $tableName,
                 'columns' => $formattedColumns,
             ];
 
-            // Obter chaves estrangeiras para as relações
-            foreach ($tables as $table) {
-                $tableName = $table->name;
-                $foreignKeys = $db->select("PRAGMA foreign_key_list('{$tableName}')");
+            $tIndex++;
+        }
 
-                foreach ($foreignKeys as $fk) {
-                    $fromTableIdx = $tableIndices[$tableName] ?? null;
-                    $toTableIdx   = $tableIndices[$fk->table] ?? null;
+        // ---------------------------------------------------------
+        // PASS 2: Build the Relations ONLY if both tables were selected
+        // ---------------------------------------------------------
+        foreach ($selectedTableNames as $tableName) {
+            // Safety check: skip if the table failed to load in Pass 1
+            if (!isset($tableIndices[$tableName])) continue;
 
-                    $fromColIdx = $columnIndices[$tableName][$fk->from] ?? null;
-                    $toColIdx   = $columnIndices[$fk->table][$fk->to] ?? null;
+            $foreignKeys = $db->select("PRAGMA foreign_key_list('{$tableName}')");
 
-                    if (isset($fromTableIdx, $toTableIdx, $fromColIdx, $toColIdx)) {
-                        $schema['relations'][] = [
-                            'name' => "{$tableName}_{$fk->table}",
-                            'connection_segments' => [],
-                            'tables' => [$fromTableIdx, $toTableIdx],   // Rust: pub tables: [usize; 2]
-                            'columns' => [$fromColIdx, $toColIdx],      // Rust: pub columns: [usize; 2]
-                            'description' => "FK: {$tableName}.{$fk->from} -> {$fk->table}.{$fk->to}"
-                        ];
-                    }
+            foreach ($foreignKeys as $fk) {
+                $fromTableIdx = $tableIndices[$tableName] ?? null;
+                $toTableIdx   = $tableIndices[$fk->table] ?? null;
+
+                $fromColIdx = $columnIndices[$tableName][$fk->from] ?? null;
+                $toColIdx   = $columnIndices[$fk->table][$fk->to] ?? null;
+
+                // STRICT CHECK: We only add the relation if BOTH tables exist in the user's selection!
+                if (isset($fromTableIdx, $toTableIdx, $fromColIdx, $toColIdx)) {
+                    $schema['relations'][] = [
+                        'name' => "{$tableName}_{$fk->table}",
+                        'connection_segments' => [],
+                        'tables' => [$fromTableIdx, $toTableIdx],   // Rust: pub tables: [usize; 2]
+                        'columns' => [$fromColIdx, $toColIdx],      // Rust: pub columns: [usize; 2]
+                        'description' => "FK: {$tableName}.{$fk->from} -> {$fk->table}.{$fk->to}"
+                    ];
                 }
             }
         }
@@ -97,5 +150,17 @@ class DatabaseExtractorService
         DB::purge('sqlite');
 
         return json_encode($schema);
+    }
+
+    /**
+     * Helper method to keep the connection logic DRY
+     */
+    private function connectSqlite(string $filePath): void
+    {
+        Config::set('database.connections.sqlite', [
+            'driver' => 'sqlite',
+            'database' => $filePath,
+            'foreign_key_constraints' => true,
+        ]);
     }
 }
