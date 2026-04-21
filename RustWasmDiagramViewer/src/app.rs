@@ -1,4 +1,6 @@
 use egui::*;
+use emath::*;
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -64,7 +66,7 @@ impl Default for TemplateApp {
                             description: String::new()
                         },
                         Column {
-                            name: String::from("segunda_id"),
+                            name: String::from("terceira_id"),
                             column_type: String::from("NUMBER"),
                             nullable: false,
                             key_type: String::from("FK"),
@@ -168,12 +170,11 @@ const COL_SIZE: f32 = 26.0;
 // --- Implementações das estruturas ---
 
 impl Table {
-    pub fn ui(&mut self, ctx: &Context, id: usize, relations: &mut Vec<Relation>) {
+    pub fn ui(&mut self, ctx: &Context, id: usize, relations: &mut Vec<Relation>, scene_transform: TSTransform) {
         let area_response = Area::new(Id::new(("table", id)))
             .constrain(false)
-            .movable(true)
             .pivot(Align2::CENTER_CENTER)
-            .default_pos(self.pos)
+            .current_pos(scene_transform.mul_pos(self.pos))
             .show(ctx, |ui| {
                 let table_width = ui.fonts_mut(|f| {
                     let header_width = f.layout_no_wrap(
@@ -232,6 +233,7 @@ impl Table {
             });
         
         if area_response.response.dragged() {
+            self.pos += area_response.response.drag_delta()/scene_transform.scaling;
             ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
         }
         if area_response.response.drag_stopped() {
@@ -252,8 +254,6 @@ impl Table {
                 }
             }
         }
-
-        self.pos = area_response.response.rect.min;
     }
 
     fn header_ui(&mut self, ui: &mut Ui) {
@@ -806,10 +806,10 @@ impl TemplateApp {
             pts[2].x = new_x;
 
             // Draw many (FK) notation
-            painter.line_segment([pts[0] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/2.0, 0.0),
-                pts[0] + vec2(0.0, 5.0)], line_stroke);
-            painter.line_segment([pts[0] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/2.0, 0.0),
-                pts[0] + vec2(0.0, -5.0)], line_stroke);
+            painter.line_segment([pts[0] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/1.5, 0.0),
+                pts[0] + vec2(0.0, 8.0)], line_stroke);
+            painter.line_segment([pts[0] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/1.5, 0.0),
+                pts[0] + vec2(0.0, -8.0)], line_stroke);
 
             // Second table
             let left_line = if enough_space {pts[last_idx].x} else {x_align} > pts[last_idx-1].x;
@@ -819,8 +819,8 @@ impl TemplateApp {
             pts[last_idx-1].x = new_x;
             pts[last_idx-2].x = new_x;
             // Draw one (PK) notation
-            painter.line_segment([pts[last_idx] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/3.0, 5.0),
-                pts[last_idx] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/3.0, -5.0)], line_stroke);
+            painter.line_segment([pts[last_idx] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/3.0, 8.0),
+                pts[last_idx] + vec2(if left_line {-1.0} else {1.0} * TABLE_PROXIMITY_LIMIT/3.0, -8.0)], line_stroke);
 
             // Draw hole path relation
             painter.line(pts.clone(), line_stroke);
@@ -828,11 +828,12 @@ impl TemplateApp {
             for (seg_idx, pair) in pts[1..pts.len() - 1].windows(2).enumerate() {
                 let (p1, p2) = (pair[0], pair[1]);
                 let vertical = seg_idx % 2 == 0;
-                let expand = if vertical { vec2(LINE_WIDTH + 3.0, 0.0) } else { vec2(0.0, LINE_WIDTH + 3.0) };
+                let expand = if vertical { vec2(LINE_WIDTH/2.0 + 3.0, 0.0) } else { vec2(0.0, LINE_WIDTH/2.0 + 3.0) };
 
                 let seg_id  = ui.id().with(("seg",   rela_idx, seg_idx));
-                let seg_response = ui.interact(Rect::from_two_pos(p1, p2).expand2(expand), seg_id, Sense::click_and_drag());
-
+                let seg_area = Rect::from_two_pos(p1, p2).expand2(vec2(LINE_WIDTH/2.0, LINE_WIDTH/2.0));
+                let seg_response = ui.interact(seg_area.expand2(expand), seg_id, Sense::click_and_drag());
+                
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
                 Popup::menu(&seg_response).id(popup_id).show(|ui| {
                     if ui.button("⟳").clicked() {
@@ -851,7 +852,7 @@ impl TemplateApp {
                     relation.relation_segments[seg_idx] += if vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
                 }
                 if seg_response.hovered() {
-                    painter.line_segment([p1, p2], Stroke::new(LINE_WIDTH, Color32::from_gray(160)));
+                    painter.rect_filled(seg_area, CornerRadius::ZERO, Color32::from_gray(160));
                 }
                 if seg_response.secondary_clicked() {
                     let mid = if vertical { (p1.y + p2.y) / 2.0 } else { (p1.x + p2.x) / 2.0 };
@@ -879,15 +880,13 @@ impl TemplateApp {
                         Popup::open_id(ui.ctx(), popup_id);
                     }
 
-                    let dot_color = if pt_response.dragged() {
-                        relation.relation_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
-                        relation.relation_segments[seg_idx]     += if vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
-                        Color32::from_gray(140)
-                    } else if pt_response.hovered() {
-                        Color32::from_gray(170)
-                    } else {
-                        Color32::from_gray(75)
-                    };
+                    if pt_response.hovered() {
+                        painter.circle_filled(p1, 4.5, Color32::from_gray(130));
+                        if pt_response.dragged() {
+                            relation.relation_segments[seg_idx - 1] += if vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
+                            relation.relation_segments[seg_idx]     += if vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
+                        }
+                    }
 
                     if pt_response.secondary_clicked() {
                         relation.relation_segments.remove(seg_idx);
@@ -898,13 +897,8 @@ impl TemplateApp {
                         verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
                         verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
                     }
-
-                    painter.circle_filled(p1, 4.5, dot_color);
                 }
             }
-
-            painter.circle_filled(pts[1],              4.5, Color32::from_gray(75));
-            painter.circle_filled(pts[pts.len() - 2],  4.5, Color32::from_gray(75));
         }
     }*/
 }
@@ -914,6 +908,21 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             self.ui_top_bar(ctx, ui);
+
+            ui.separator();
+
+            let mut scene_transform = ui.ctx().data(|d| {
+                match d.get_temp(Id::new("scene_transform")) {
+                    Some(scene_transform) => scene_transform,
+                    None => TSTransform::default(),
+                }
+            });
+
+            let (mut bg_response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+
+            Scene::new().drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
+                .zoom_range(Rangef::new(0.5, 2.0))
+                .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
             //ui.separator();
         });
         CentralPanel::default().show(ctx, |ui| {
@@ -921,11 +930,36 @@ impl eframe::App for TemplateApp {
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
-                table.ui(ctx, i, &mut self.relations);
+                table.ui(ctx, i, &mut self.relations, scene_transform);
             }
+
+            /* Window::new("testeee")
+                .title_bar(false)
+                .constrain(false)
+                .pivot(Align2::CENTER_CENTER)
+                .frame(Frame::new().fill(Color32::BLUE))
+                .fixed_rect(scene_transform.mul_rect(Rect::from_center_size(pos2(1000.0, 500.0), vec2(200.0, 200.0))))
+                .show(ctx, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    let inner_response = Scene::new()
+                        .zoom_range(Rangef::point(scene_transform.scaling))
+                        .drag_pan_buttons(DragPanButtons::empty())
+                        .show(ui, &mut Rect::from_pos((ui.available_size()/(2.0*scene_transform.scaling)).to_pos2()), |ui| {
+                            ui.button("atoms");
+                            ui.label("alou");
+                            ui.label("variable pointer");
+                    });
+                    if inner_response.response.dragged() {
+                        self.tables[0].pos += inner_response.response.drag_delta();
+                    }
+                }); */
 
             // Desenhar as linhas das relações
             self.draw_relations(ui, &painter);
+
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(Id::new("scene_transform"), scene_transform);
+            })
         });
     }
 
