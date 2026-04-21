@@ -57,7 +57,7 @@ class ExtractDatabase extends Page implements HasForms
                                 ->schema([
                                     TextInput::make('filePath')
                                         ->label('Caminho do ficheiro SQLite')
-                                        ->helperText('Insira o caminho absoluto para o ficheiro .sqlite ou .db no servidor.')
+                                        //->helperText('Insira o caminho absoluto para o ficheiro .sqlite ou .db no servidor.')
                                         ->required(),
 
                                     Actions::make([
