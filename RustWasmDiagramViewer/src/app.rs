@@ -909,7 +909,9 @@ impl eframe::App for TemplateApp {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             self.ui_top_bar(ctx, ui);
 
-            ui.separator();
+            //ui.separator();
+        });
+        CentralPanel::default().show(ctx, |ui| {
 
             let mut scene_transform = ui.ctx().data(|d| {
                 match d.get_temp(Id::new("scene_transform")) {
@@ -923,9 +925,6 @@ impl eframe::App for TemplateApp {
             Scene::new().drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
                 .zoom_range(Rangef::new(0.5, 2.0))
                 .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
-            //ui.separator();
-        });
-        CentralPanel::default().show(ctx, |ui| {
             let (_response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
 
             // Desenhar as tabelas
