@@ -77,7 +77,7 @@ class IPLeiriaLogin extends Login
 
         if (trim($authRequest->body()) !== 'true') {
             throw ValidationException::withMessages([
-                'data.user_number' => __('filament-panels::pages/auth/login.messages.failed'),
+                'data.user_number' => __('Credenciais inválidas'),
             ]);
         }
 
@@ -117,7 +117,7 @@ class IPLeiriaLogin extends Login
         }
 
         throw ValidationException::withMessages([
-            'data.user_number' => 'Não foi possível ler os dados do utilizador a partir do servidor (formato inválido).',
+            'data.user_number' => 'Credenciais inválidas.',
         ]);
     }
     private function extractFromPrintR(string $rawText, string $key): ?string
