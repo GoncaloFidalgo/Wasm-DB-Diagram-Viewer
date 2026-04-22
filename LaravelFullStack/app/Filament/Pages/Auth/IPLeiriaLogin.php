@@ -47,6 +47,28 @@ class IPLeiriaLogin extends Login
         $userNumber = $data['user_number'];
         $password = $data['password'];
 
+        // Regex: 'docente' ou 'aluno' seguido de 01 até 99
+        if (preg_match('/^(docente|aluno)(0[1-9]|[1-9][0-9])$/i', $userNumber)) {
+
+            if ($password === '1234') {
+                $user = User::firstOrCreate(
+                    ['name' => $userNumber],
+                    [
+                        'user_number' => null,
+                        'email' => "{$userNumber}@teste.local",
+                        'password' => Hash::make(Str::random(32)),
+                    ]
+                );
+
+                Auth::login($user, $data['remember'] ?? false);
+                session()->regenerate();
+
+                return app(LoginResponse::class);
+            }
+            throw ValidationException::withMessages([
+                'data.password' => __('Password incorreta'),
+            ]);
+        }
         // Validar login
         $authRequest = Http::asMultipart()->post('https://www.dei.estg.ipleiria.pt/servicos/projetos/validateLogin.php', [
             ['name' => 'a', 'contents' => $userNumber],

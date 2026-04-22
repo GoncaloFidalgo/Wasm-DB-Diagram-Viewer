@@ -138,7 +138,7 @@ class DatabaseExtractorService
                 if (isset($fromTableIdx, $toTableIdx, $fromColIdx, $toColIdx)) {
                     $schema['relations'][] = [
                         'name' => "{$tableName}_{$fk->table}",
-                        'connection_segments' => [],
+                        'relation_segments' => [],
                         'tables' => [$fromTableIdx, $toTableIdx],   // Rust: pub tables: [usize; 2]
                         'columns' => [$fromColIdx, $toColIdx],      // Rust: pub columns: [usize; 2]
                         'description' => "FK: {$tableName}.{$fk->from} -> {$fk->table}.{$fk->to}"
