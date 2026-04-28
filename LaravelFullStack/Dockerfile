@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && docker-php-ext-configure intl \
-    && docker-php-ext-install intl zip pdo pdo_pgsql pgsql
+    && docker-php-ext-install intl zip pdo pdo_pgsql pgsql pdo_mysql \
 
 # Enable Apache mod_rewrite for Laravel routing
 RUN a2enmod rewrite
@@ -36,7 +36,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 COPY . /var/www/html
 
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --ignore-platform-reqs
+RUN composer install --no-dev --optimize-autoloader
 
 # Install NPM dependencies and build the frontend
 RUN npm install && npm run build
