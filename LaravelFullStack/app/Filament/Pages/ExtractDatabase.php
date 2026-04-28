@@ -81,6 +81,7 @@ class ExtractDatabase extends Page implements HasForms
                                         ->preserveFilenames()
                                         ->required(fn (Get $get) => $get('engine') === 'sqlite')
                                         ->visible(fn (Get $get) => $get('engine') === 'sqlite'),
+
                                     Grid::make(2)
                                         ->visible(fn (Get $get) => $get('engine') === 'mysql')
                                         ->schema([
@@ -130,7 +131,7 @@ class ExtractDatabase extends Page implements HasForms
                                     CheckboxList::make('selectedTables')
                                         ->hiddenLabel()
                                         ->options(fn () => $this->extractedTables->mapWithKeys(fn($table) => [$table => $table])->toArray())
-                                        ->columns(1)
+                                        ->columns()
                                         ->gridDirection('row')
                                         ->bulkToggleable()
                                         ->searchable()
@@ -169,9 +170,9 @@ class ExtractDatabase extends Page implements HasForms
                 $relativePath = is_array($filePath) ? array_values($filePath)[0] : $filePath;
                 $absolutePath = Storage::disk('local')->path($relativePath);
 
-                $tablesData = $extractor->extractAllTables($absolutePath, 'sqlite');
+                $tablesData = $extractor->extractTables($absolutePath);
             } else {
-                $tablesData = $extractor->extractAllTables(null, 'mysql', $state);
+                $tablesData = $extractor->extractTables(null, 'mysql', $state);
             }
 
             $cleanTableNames = array_column($tablesData, 'name');
