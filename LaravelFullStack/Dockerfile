@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && docker-php-ext-configure intl \
-    && docker-php-ext-install intl zip pdo pdo_pgsql pgsql pdo_mysql mysql\
+    && docker-php-ext-install intl zip pdo_pgsql pgsql pdo_mysql
 
 # Enable Apache mod_rewrite for Laravel routing
 RUN a2enmod rewrite
