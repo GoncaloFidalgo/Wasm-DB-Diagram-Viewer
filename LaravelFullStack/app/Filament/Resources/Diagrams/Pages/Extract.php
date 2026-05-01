@@ -1,44 +1,46 @@
 <?php
 
-namespace App\Filament\Pages;
+namespace App\Filament\Resources\Diagrams\Pages;
 
+use App\Filament\Resources\Diagrams\DiagramResource;
+use App\Services\DatabaseExtractorService;
+use Filament\Actions\Action;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Infolists\Components\TextEntry;
-use Filament\Pages\Page;
-use App\Services\DatabaseExtractorService;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use Filament\Notifications\Notification;
-use Illuminate\Support\Collection;
-use Illuminate\Support\HtmlString;
-use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Schemas\Schema;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\Page;
+use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Actions;
-use Filament\Actions\Action;
-use Filament\Forms\Components\CheckboxList;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
-class ExtractDatabase extends Page implements HasForms
+class Extract extends Page
 {
-    use InteractsWithForms;
-    protected static bool $shouldRegisterNavigation = false;
-    protected static ?string $title = 'Extrair Base de Dados';
-    protected static ?string $slug = 'extract';
-    protected string $view = 'filament.pages.extract-database';
+
+    protected static string $resource = DiagramResource::class;
+
+    protected string $view = 'filament.resources.diagrams.pages.extract';
+
+    protected static  ?string $title = 'Gerar Diagrama';
 
     public ?array $data = [];
     public Collection $extractedTables;
     public ?string $rawJsonSchema = null;
-    public function mount()
+
+    public function mount(): void
     {
         $this->extractedTables = collect();
 
@@ -61,6 +63,9 @@ class ExtractDatabase extends Page implements HasForms
                 Form::make([
                     Grid::make()
                         ->schema([
+
+
+
                             Section::make('Dados da Conexão')
                                 ->columnSpan(1)
                                 ->schema([
@@ -213,5 +218,4 @@ class ExtractDatabase extends Page implements HasForms
 
         return $this->redirect('/diagram/' . $diagramId, navigate: true);
     }
-
 }
