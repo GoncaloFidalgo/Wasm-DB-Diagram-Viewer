@@ -34,6 +34,7 @@ impl Default for TemplateApp {
                             name: String::from("id"),
                             column_type: String::from("NUMBER"),
                             nullable: false,
+                            unique: false,
                             key_type: String::from("PK"),
                             description: String::new()
                         },
@@ -41,6 +42,7 @@ impl Default for TemplateApp {
                             name: String::from("name"),
                             column_type: String::from("VARCHAR2"),
                             nullable: false,
+                            unique: false,
                             key_type: String::new(),
                             description: String::new()
                         }
@@ -55,13 +57,15 @@ impl Default for TemplateApp {
                             name: String::from("id"),
                             column_type: String::from("NUMBER"),
                             nullable: false,
+                            unique: false,
                             key_type: String::from("PK"),
                             description: String::new()
                         },
                         Column {
                             name: String::from("primeira_id"),
                             column_type: String::from("NUMBER"),
-                            nullable: false,
+                            nullable: true,
+                            unique: true,
                             key_type: String::from("FK"),
                             description: String::new()
                         },
@@ -69,6 +73,7 @@ impl Default for TemplateApp {
                             name: String::from("terceira_id"),
                             column_type: String::from("NUMBER"),
                             nullable: false,
+                            unique: false,
                             key_type: String::from("FK"),
                             description: String::new()
                         }
@@ -83,6 +88,7 @@ impl Default for TemplateApp {
                             name: String::from("id"),
                             column_type: String::from("NUMBER"),
                             nullable: false,
+                            unique: false,
                             key_type: String::from("PK"),
                             description: String::new()
                         },
@@ -90,6 +96,7 @@ impl Default for TemplateApp {
                             name: String::from("idade"),
                             column_type: String::from("NUMBER"),
                             nullable: true,
+                            unique: false,
                             key_type: String::new(),
                             description: String::new()
                         }
@@ -131,6 +138,7 @@ pub struct Column {
     pub name: String,
     pub column_type: String,
     pub nullable: bool,
+    pub unique: bool,
     pub description: String,
     pub key_type: String,
 }
@@ -155,7 +163,6 @@ const TABLE_BORDER: Color32 = Color32::from_gray(55);
 const HEADER_BG:    Color32 = Color32::from_rgb(28, 28, 33);
 const HEADER_HOVER: Color32 = Color32::from_rgb(38, 38, 46);
 const HEADER_TEXT:  Color32 = Color32::from_rgb(240, 240, 240);
-const DIVIDER:      Color32 = Color32::from_gray(48);
 const COL_NAME:     Color32 = Color32::from_rgb(228, 228, 228);
 const COL_TYPE:     Color32 = Color32::from_gray(140);
 const NULL_TEXT:    Color32 = Color32::from_rgb(155, 155, 175);
@@ -171,120 +178,113 @@ const COL_SIZE: f32 = 26.0;
 
 impl Table {
     pub fn ui(&mut self, ctx: &Context, id: usize, relations: &mut Vec<Relation>, scene_transform: TSTransform) {
-        let area_response = Area::new(Id::new(("table", id)))
+        let table_width = ctx.fonts_mut(|f| {
+            let header_width = f.layout_no_wrap(
+                self.name.clone(),
+                FontId::proportional(14.5),
+                HEADER_TEXT,
+            ).rect.width();
+
+            let mut max_col_width: f32 = 0.0;
+
+            for col in &self.columns {
+                // Nome da coluna
+                let name_w = f.layout_no_wrap(
+                    col.name.clone(),
+                    FontId::proportional(13.0),
+                    COL_NAME,
+                ).rect.width();
+
+                // Tipo de dados
+                let type_w = f.layout_no_wrap(
+                    col.column_type.clone(),
+                    FontId::proportional(11.5),
+                    COL_TYPE,
+                ).rect.width();
+
+                // Adicionar +40 se o campo for nullable
+                let null_w = if col.nullable {40.0} else {0.0};
+
+                // Somar todas as widths +30 para ter um pouco de margem
+                let total = name_w + null_w + type_w + 30.0;
+                max_col_width = max_col_width.max(total);
+            }
+
+            300.0_f32.max(header_width.max(max_col_width))
+        });
+
+        let inner_window_response = Window::new(&self.name)
+            .title_bar(false)
             .constrain(false)
-            .pivot(Align2::CENTER_CENTER)
-            .current_pos(scene_transform.mul_pos(self.pos))
+            .frame(Frame::new().fill(TABLE_BG).stroke(Stroke::new(1.0 * scene_transform.scaling, TABLE_BORDER)).shadow(Shadow {offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(90)}))
+            .fixed_rect(scene_transform.mul_rect(Rect::from_center_size(self.pos, vec2(table_width, 8.0 + HEADER_SIZE + COL_SIZE * self.columns.len() as f32))))
             .show(ctx, |ui| {
-                let table_width = ui.fonts_mut(|f| {
-                    let header_width = f.layout_no_wrap(
-                        self.name.clone(),
-                        FontId::proportional(14.5),
-                        HEADER_TEXT,
-                    ).rect.width();
-
-                    let mut max_col_width: f32 = 0.0;
-
-                    for col in &self.columns {
-                        // Nome da coluna
-                        let name_w = f.layout_no_wrap(
-                            col.name.clone(),
-                            FontId::proportional(13.0),
-                            COL_NAME,
-                        ).rect.width();
-
-                        // Tipo de dados
-                        let type_w = f.layout_no_wrap(
-                            col.column_type.clone(),
-                            FontId::proportional(11.5),
-                            COL_TYPE,
-                        ).rect.width();
-
-                        // Adicionar +40 se o campo for nullable
-                        let null_w = if col.nullable {40.0} else {0.0};
-
-                        // Somar todas as widths +30 para ter um pouco de margem
-                        let total = name_w + null_w + type_w + 30.0;
-                        max_col_width = max_col_width.max(total);
-                    }
-
-                    300.0_f32.max(header_width.max(max_col_width))
-                });
-                Frame::new()
-                    .fill(TABLE_BG)
-                    .stroke(Stroke::new(1.0, TABLE_BORDER))
-                    .corner_radius(8.0)
-                    .inner_margin(Margin::same(0))
-                    .shadow(Shadow {
-                        offset: [0, 6],
-                        blur: 18,
-                        spread: 0,
-                        color: Color32::from_black_alpha(90),
-                    })
-                    .show(ui, |ui| {
-                        ui.set_width(table_width);
-                        self.header_ui(ui);
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let inner_response = Scene::new()
+                    .zoom_range(Rangef::point(scene_transform.scaling))
+                    .drag_pan_buttons(DragPanButtons::empty())
+                    .show(ui, &mut Rect::from_pos((ui.available_size()/(2.0*scene_transform.scaling)).to_pos2()), |ui| {
+                        self.header_ui(ui, table_width);
                         ui.add_space(2.0);
-                        for (col_idx, column) in self.columns.iter().enumerate() {
-                            column.ui(ui, id, col_idx);
+                        for column in self.columns.iter() {
+                            column.ui(ui, table_width);
                         }
                         ui.add_space(6.0);
                     });
-            });
-        
-        if area_response.response.dragged() {
-            self.pos += area_response.response.drag_delta()/scene_transform.scaling;
-            ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-        }
-        if area_response.response.drag_stopped() {
-            for relation in relations {
-                if relation.tables[0] == id || relation.tables[1] == id {
-                    let (rect_a, rect_b) = ctx.data(|data| {
-                        (
-                            data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
-                            data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
-                        )
-                    });
 
-                    let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                        continue;
-                    };
-
-                    verify_line_segment_joins(&mut relation.relation_segments, 0, rect_a.center().y, rect_b.center().y);
+                if inner_response.response.dragged() {
+                    self.pos += inner_response.response.drag_delta();
+                    ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
                 }
+                if inner_response.response.drag_stopped() {
+                    for relation in relations {
+                        if relation.tables[0] == id || relation.tables[1] == id {
+                            let (rect_a, rect_b) = ctx.data(|data| {
+                                (
+                                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                                )
+                            });
+
+                            let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                                continue;
+                            };
+
+                            verify_line_segment_joins(&mut relation.relation_segments, 0, scene_transform.inverse().mul_pos(rect_a.center()).y, scene_transform.inverse().mul_pos(rect_b.center()).y);
+                            if relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
+                                let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
+                                self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                            }
+                        }
+                    }
+                }
+            });
+        if let Some(inner_window_response) = inner_window_response {
+            let table_rect = inner_window_response.response.rect;
+            for (col_idx, _column) in self.columns.iter().enumerate() {
+                let y = table_rect.top() + (HEADER_SIZE + 2.0 + (col_idx as f32 * COL_SIZE))*scene_transform.scaling;
+
+                let col_rect = Rect::from_min_size(pos2(table_rect.left(), y), vec2(table_rect.width(), COL_SIZE*scene_transform.scaling));
+
+                let column_rect_id = Id::new(("column_rect", id, col_idx));
+                ctx.data_mut(|data| {
+                    data.insert_temp(column_rect_id, col_rect);
+                });
             }
         }
     }
 
-    fn header_ui(&mut self, ui: &mut Ui) {
+    fn header_ui(&mut self, ui: &mut Ui, table_width: f32) {
         let (rect, response) = ui.allocate_exact_size(
-            vec2(ui.available_width(), HEADER_SIZE),
+            vec2(table_width, HEADER_SIZE),
             Sense::click(),
         );
 
-        if response.hovered() {
-            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
-        }
+        if response.hovered() { ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand); }
 
         let bg = if response.hovered() { HEADER_HOVER } else { HEADER_BG };
-        ui.painter().rect_filled(
-            rect,
-            CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 },
-            bg,
-        );
-
-        ui.painter().text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            &self.name,
-            FontId::proportional(14.0),
-            HEADER_TEXT,
-        );
-
-        ui.painter().line_segment(
-            [pos2(rect.left(), rect.bottom()), pos2(rect.right(), rect.bottom())],
-            Stroke::new(1.0, DIVIDER),
-        );
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, bg);
+        ui.painter().text(rect.center(), Align2::CENTER_CENTER, &self.name, FontId::proportional(14.0), HEADER_TEXT);
 
         Popup::menu(&response)
             .frame(popup_frame())
@@ -304,16 +304,11 @@ impl Table {
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_id: usize, col_id: usize) {
+    fn ui(&self, ui: &mut Ui, table_width: f32) {
         let (rect, response) = ui.allocate_exact_size(
-            vec2(ui.available_width(), COL_SIZE),
+            vec2(table_width, COL_SIZE),
             Sense::click(),
         );
-
-        let id = Id::new(("column_rect", table_id, col_id));
-        ui.ctx().data_mut(|data| {
-            data.insert_temp(id, rect);
-        });
 
         if response.hovered() {
             ui.painter().rect_filled(
@@ -539,14 +534,13 @@ impl TemplateApp {
             });
         });
     }
-    fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter) {
-        const LINE_WIDTH: f32 = 2.5;
-        const TABLE_PROXIMITY_LIMIT: f32 = 20.0;
-        const NOTATION_SIZE: f32 = 8.0;
-        const INTERACT_HITBOX_SIZE: f32 = 14.0;
+    fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter, scene_transform: TSTransform) {
+        let line_width: f32 = 2.5 * scene_transform.scaling;
+        let table_proximity_limit: f32 = 20.0 * scene_transform.scaling;
+        let notation_size: f32 = 8.0 * scene_transform.scaling;
+        let interact_hitbox_size: f32 = 14.0 * scene_transform.scaling;
 
-        let line_stroke = Stroke::new(LINE_WIDTH, Color32::from_gray(80));
-
+        let line_stroke = Stroke::new(line_width, Color32::from_gray(80));
 
         for (rela_idx, relation) in self.relations.iter_mut().enumerate() {
             // Obter os retângulos para ligar a relação
@@ -566,39 +560,41 @@ impl TemplateApp {
             };
 
             // Cálculos base para as posições
-            let auto_align = relation.relation_segments.is_empty();
-
             let start = rect_a.center();
             let start_offset = rect_a.width() / 2.0;
 
             let end = rect_b.center();
             let end_offset = rect_b.width() / 2.0;
 
+            let front_line = relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 5.0 * scene_transform.scaling;
+            let auto_align = relation.relation_segments.is_empty();
             let x_align = (start.x + end.x) / 2.0;
 
             // Criar pontos inicias para o caminho da relação
             let mut pts = Vec::from([start]);
 
-            if auto_align {
-                pts.push(pos2(x_align, start.y));
-                pts.push(pos2(x_align, end.y));
-            } else {
-                pts.push(pos2(relation.relation_segments[0], start.y));
-                for (i, seg) in relation.relation_segments.windows(2).enumerate() {
-                    pts.push(if i % 2 == 0 {
-                        pos2(seg[0], seg[1])
-                    } else {
-                        pos2(seg[1], seg[0])
-                    });
+            if !front_line {
+                if auto_align {
+                    pts.push(pos2(x_align, start.y));
+                    pts.push(pos2(x_align, end.y));
+                } else {
+                    pts.push(pos2(relation.relation_segments[0] * scene_transform.scaling + scene_transform.translation.x, start.y));
+                    for (i, seg) in relation.relation_segments.windows(2).enumerate() {
+                        pts.push(scene_transform.mul_pos(if i % 2 == 0 {
+                            pos2(seg[0], seg[1])
+                        } else {
+                            pos2(seg[1], seg[0])
+                        }));
+                    }
+                    pts.push(pos2(*relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x, end.y));
                 }
-                pts.push(pos2(*relation.relation_segments.last().unwrap(), end.y));
             }
             pts.push(end);
 
             // Ajustar posição da linha com base no limite dos retangulos das tabelas e desenhar as notações
 
             let last_idx = pts.len() - 1;
-            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + TABLE_PROXIMITY_LIMIT * 2.0;
+            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
 
             // --- Primeira Tabela FK ---
             let start_goes_left = (if enough_space { pts[0].x } else { x_align }) > pts[1].x;
@@ -606,38 +602,60 @@ impl TemplateApp {
             let start_dir = if start_goes_left { -1.0 } else { 1.0 };
 
             pts[0].x += start_dir * start_offset;
-            let new_start_x = if start_goes_left {
-                pts[1].x.min(pts[0].x - TABLE_PROXIMITY_LIMIT)
-            } else {
-                pts[1].x.max(pts[0].x + TABLE_PROXIMITY_LIMIT)
-            };
-            pts[1].x = new_start_x;
-            pts[2].x = new_start_x;
+            if !front_line {
+                let new_start_x = if start_goes_left {
+                    pts[1].x.min(pts[0].x - table_proximity_limit)
+                } else {
+                    pts[1].x.max(pts[0].x + table_proximity_limit)
+                };
+                pts[1].x = new_start_x;
+                pts[2].x = new_start_x;
+            }
 
-            // Desenhar a notação Many
-            let crow_base = pts[0] + vec2(start_dir * TABLE_PROXIMITY_LIMIT / 1.5, 0.0);
-            painter.line_segment([crow_base, pts[0] + vec2(0.0, NOTATION_SIZE)], line_stroke);
-            painter.line_segment([crow_base, pts[0] + vec2(0.0, - NOTATION_SIZE)], line_stroke);
+            if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
+                // Desenhar a notação One
+                let crow_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, notation_size);
+                let down_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, - notation_size);
+                painter.line_segment([crow_up_base, down_up_base], line_stroke);
+            } else {
+                // Desenhar a notação Many
+                let crow_base = pts[0] + vec2(start_dir * table_proximity_limit / 1.5, 0.0);
+                painter.line_segment([crow_base, pts[0] + vec2(0.0, notation_size)], line_stroke);
+                painter.line_segment([crow_base, pts[0] + vec2(0.0, - notation_size)], line_stroke);
+            }
 
             // --- Segunda Tabela PK --
             let end_goes_left = if enough_space {pts[last_idx].x} else {x_align} > pts[last_idx-1].x;
             let end_dir = if end_goes_left { -1.0 } else { 1.0 };
 
             pts[last_idx].x += end_dir * end_offset;
-            let new_end_x = if end_goes_left {
-                pts[last_idx - 1].x.min(pts[last_idx].x - TABLE_PROXIMITY_LIMIT)
-            } else {
-                pts[last_idx - 1].x.max(pts[last_idx].x + TABLE_PROXIMITY_LIMIT)
-            };
-            pts[last_idx - 1].x = new_end_x;
-            pts[last_idx - 2].x = new_end_x;
+            if !front_line {
+                let new_end_x = if end_goes_left {
+                    pts[last_idx - 1].x.min(pts[last_idx].x - table_proximity_limit)
+                } else {
+                    pts[last_idx - 1].x.max(pts[last_idx].x + table_proximity_limit)
+                };
+                pts[last_idx - 1].x = new_end_x;
+                pts[last_idx - 2].x = new_end_x;
+            }
 
-            // Desenhar notação One
-            let pk_base = pts[last_idx] + vec2(end_dir * TABLE_PROXIMITY_LIMIT / 3.0, NOTATION_SIZE);
-            painter.line_segment([pk_base, pts[last_idx] + vec2(end_dir * TABLE_PROXIMITY_LIMIT / 3.0, - NOTATION_SIZE)], line_stroke);
+            if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
+                // Desenhar a notação Zero
+                let crow_base_start = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 - notation_size/2.0), 0.0);
+                let crow_base_end = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 + notation_size/2.0), 0.0);
+                painter.line_segment([pts[last_idx], crow_base_start], line_stroke);
+                painter.line_segment([crow_base_end, pts[last_idx-1] + vec2(end_dir * line_width/2.0, 0.0)], line_stroke);
+                painter.circle_stroke(pts[last_idx] + vec2(end_dir * table_proximity_limit / 2.0, 0.0), notation_size/2.0, line_stroke);
+            } else {
+                // Desenhar a notação One
+                painter.line_segment([pts[last_idx], pts[last_idx-1] + vec2(end_dir * line_width/2.0, 0.0)], line_stroke);
+                let crow_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, notation_size);
+                let down_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, - notation_size);
+                painter.line_segment([crow_up_base, down_up_base], line_stroke);
+            }
 
             // Desenhar a linha completa
-            painter.line(pts.clone(), line_stroke);
+            if !front_line {painter.line(pts[0..last_idx].to_vec(), line_stroke);}
 
             // Segmentos
             for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
@@ -647,7 +665,7 @@ impl TemplateApp {
                 let seg_id = ui.id().with(("seg", rela_idx, seg_idx));
 
                 // Area visual, largura da linha
-                let visual_rect = Rect::from_two_pos(p1, p2).expand(LINE_WIDTH / 2.0);
+                let visual_rect = Rect::from_two_pos(p1, p2).expand(line_width / 2.0);
 
                 // Expandir a area para clicar
                 let hit_padding = if is_vertical { vec2(3.0, 0.0) } else { vec2(0.0, 3.0) };
@@ -668,10 +686,11 @@ impl TemplateApp {
 
                 // --- Mudanças de estado (Start / End Drag / Right Click) ---
                 if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
+                    let interact_real_center = scene_transform.inverse().mul_pos(interact_rect.center());
                     if auto_align {
-                        relation.relation_segments.push(interact_rect.center().x);
+                        relation.relation_segments.push(interact_real_center.x);
                     }
-                    relation.relation_segments[seg_idx] = if is_vertical { interact_rect.center().x } else { interact_rect.center().y };
+                    relation.relation_segments[seg_idx] = if is_vertical { interact_real_center.x } else { interact_real_center.y };
 
                     Popup::open_id(ui.ctx(), popup_id);
                 }
@@ -679,16 +698,18 @@ impl TemplateApp {
                 // --- Arrastar ---
                 if seg_response.dragged() {
                     let delta = if is_vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
-                    relation.relation_segments[seg_idx] += delta;
+                    relation.relation_segments[seg_idx] += delta / scene_transform.scaling;
                 }
 
                 // --- Dividir linha ---
                 if seg_response.secondary_clicked() {
-                    let mid = if is_vertical { (p1.y + p2.y) / 2.0 } else { (p1.x + p2.x) / 2.0 };
-                    let next = if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 } else { (p2.y + pts[seg_idx + 3].y) / 2.0 };
+                    let mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
+                    let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
                     relation.relation_segments.insert(seg_idx + 1, mid);
                     relation.relation_segments.insert(seg_idx + 2, next);
                 }
+
+                let (start, end) = (scene_transform.inverse().mul_pos(start), scene_transform.inverse().mul_pos(end));
 
                 if seg_response.drag_stopped() {
                     verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
@@ -696,7 +717,7 @@ impl TemplateApp {
 
                 if seg_idx != 0 {
                     let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
-                    let pt_rect = Rect::from_center_size(p1, vec2(INTERACT_HITBOX_SIZE, INTERACT_HITBOX_SIZE));
+                    let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
                     let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
                     let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
 
@@ -707,20 +728,21 @@ impl TemplateApp {
                     });
 
                     if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
-                        relation.relation_segments[seg_idx - 1] = if is_vertical { pt_rect.center().y } else { pt_rect.center().x };
-                        relation.relation_segments[seg_idx]     = if is_vertical { pt_rect.center().x } else { pt_rect.center().y };
+                        let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
+                        relation.relation_segments[seg_idx - 1] = if is_vertical { pt_real_center.y } else { pt_real_center.x };
+                        relation.relation_segments[seg_idx]     = if is_vertical { pt_real_center.x } else { pt_real_center.y };
                         Popup::open_id(ui.ctx(), pt_popup_id);
                     }
 
                     if pt_response.hovered() {
-                        painter.circle_filled(p1, 4.5, Color32::from_gray(130));
+                        painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
 
                         if pt_response.dragged() {
                             let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
                             let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
 
-                            relation.relation_segments[seg_idx - 1] += delta_prev;
-                            relation.relation_segments[seg_idx]     += delta_curr;
+                            relation.relation_segments[seg_idx - 1] += delta_prev / scene_transform.scaling;
+                            relation.relation_segments[seg_idx]     += delta_curr / scene_transform.scaling;
                         }
                     }
 
@@ -763,34 +785,20 @@ impl eframe::App for TemplateApp {
                 .zoom_range(Rangef::new(0.5, 2.0))
                 .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
+            if !bg_response.hovered() {
+                // Desativar scrolling fora do background
+                ctx.input_mut(|i| {
+                    i.smooth_scroll_delta = Vec2::ZERO;
+                });
+            }
+
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
                 table.ui(ctx, i, &mut self.relations, scene_transform);
             }
 
-            /* Window::new("testeee")
-                .title_bar(false)
-                .constrain(false)
-                .pivot(Align2::CENTER_CENTER)
-                .frame(Frame::new().fill(Color32::BLUE))
-                .fixed_rect(scene_transform.mul_rect(Rect::from_center_size(pos2(1000.0, 500.0), vec2(200.0, 200.0))))
-                .show(ctx, |ui| {
-                    ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    let inner_response = Scene::new()
-                        .zoom_range(Rangef::point(scene_transform.scaling))
-                        .drag_pan_buttons(DragPanButtons::empty())
-                        .show(ui, &mut Rect::from_pos((ui.available_size()/(2.0*scene_transform.scaling)).to_pos2()), |ui| {
-                            ui.button("atoms");
-                            ui.label("alou");
-                            ui.label("variable pointer");
-                    });
-                    if inner_response.response.dragged() {
-                        self.tables[0].pos += inner_response.response.drag_delta();
-                    }
-                }); */
-
             // Desenhar as linhas das relações
-            self.draw_relations(ui, &painter);
+            self.draw_relations(ui, &painter, scene_transform);
 
             ui.ctx().data_mut(|d| {
                 d.insert_temp(Id::new("scene_transform"), scene_transform);
