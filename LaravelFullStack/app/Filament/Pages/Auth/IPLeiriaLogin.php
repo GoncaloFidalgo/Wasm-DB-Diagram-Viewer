@@ -2,7 +2,6 @@
 
 namespace App\Filament\Pages\Auth;
 
-
 use Filament\Auth\Http\Responses\LoginResponse;
 use Filament\Auth\Pages\Login;
 use Filament\Schemas\Schema;
@@ -12,12 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use App\Models\User;
-
-
-// Form components needed to override the layout
-
 use Filament\Forms\Components\TextInput;
-
 
 class IPLeiriaLogin extends Login
 {

@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 use egui::*;
 use emath::*;
 
@@ -19,8 +20,10 @@ extern "C" {
 pub struct TemplateApp {
     pub tables: Vec<Table>,
     pub relations: Vec<Relation>,
-    #[serde(skip)] // Não presistir, não serializar para guardar no laravel
+    #[serde(skip)] // Ignora este campo ao guardar/ler o JSON
     pub schema_loaded: bool,
+    #[serde(skip)] // Ignora este campo ao guardar/ler o JSON
+    pub save_trigger: Arc<Mutex<bool>>,
 }
 impl Default for TemplateApp {
     fn default() -> Self {
@@ -120,7 +123,9 @@ impl Default for TemplateApp {
                     description: String::new()
                 }
             ],
-            schema_loaded: false
+            schema_loaded: false,
+
+            save_trigger: Arc::new(Mutex::new(false)),
         }
     }
 }
@@ -467,7 +472,7 @@ fn popup_divider(ui: &mut Ui) {
 
 impl TemplateApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>, json_data: String) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, json_data: String, save_trigger_clone: Arc<Mutex<bool>>) -> Self {
         let mut app: TemplateApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
@@ -479,6 +484,7 @@ impl TemplateApp {
                 Ok(mut app_state) => {
                     app_state.apply_auto_layout();
                     app_state.schema_loaded = true;
+                    app_state.save_trigger = save_trigger_clone;
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -486,6 +492,7 @@ impl TemplateApp {
         }
 
         app.apply_auto_layout();
+        app.save_trigger = save_trigger_clone;
         app
     }
 
@@ -518,20 +525,6 @@ impl TemplateApp {
                 ui.label(RichText::new(format!("{} tabelas", self.tables.len())).color(Color32::from_rgb(80, 180, 80)));
             }
 
-            // Botão para guardar diagrama
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("💾 Guardar Diagrama").clicked() {
-                    match serde_json::to_string(self) {
-                        Ok(json_string) => {
-                            #[cfg(target_arch = "wasm32")]
-                            saveDiagramState(&json_string);
-                        }
-                        Err(e) => {
-                            tracing::error!("Erro ao serializar o diagrama: {}", e);
-                        }
-                    }
-                }
-            });
         });
     }
     fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter, scene_transform: TSTransform) {
@@ -765,11 +758,22 @@ impl TemplateApp {
 impl eframe::App for TemplateApp {
     /// Chamada sempre que o UI necessita de ser desenhado outra vez (60x por segundo)
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            self.ui_top_bar(ctx, ui);
+        // Verifica se o JS pediu para gravar
+        #[cfg(target_arch = "wasm32")]
+        if let Ok(mut flag) = self.save_trigger.lock() {
+            if *flag {
+                *flag = false; // Desliga a flag
 
-            //ui.separator();
-        });
+                // Gera o JSON e envia para o Laravel
+                match serde_json::to_string(self) {
+                    Ok(json_string) => {
+                        saveDiagramState(&json_string);
+                    }
+                    Err(e) => tracing::error!("Erro: {}", e),
+                }
+            }
+        }
+
         CentralPanel::default().show(ctx, |ui| {
 
             let mut scene_transform = ui.ctx().data(|d| {

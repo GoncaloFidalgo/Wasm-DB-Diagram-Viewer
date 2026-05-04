@@ -11,6 +11,10 @@ return new class extends Migration
         Schema::create('diagrams', function (Blueprint $table) {
             $table->id();
 
+            $table->string('name');
+
+            $table->text('description')->nullable();
+
             $table->uuid('diagram_id')->index();
 
             $table->unsignedInteger('version')->default(0);
