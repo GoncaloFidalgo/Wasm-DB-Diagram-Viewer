@@ -47,6 +47,7 @@
 
     <canvas
         data-schema="{{ $this->schemaJson }}"
+        data-readonly="{{ $this->isPublished ? 'true' : 'false' }}"
         id="canvas_id"
         class="block outline-none"
     />
@@ -66,7 +67,7 @@
     async function initWasm() {
         const loadingText = document.getElementById('loading_text');
         const canvas = document.getElementById('canvas_id');
-
+        const isReadOnly = canvas.dataset.readonly === 'true';
         try {
             const wasm = await import('/wasm/rust_wasm_diagram_viewer.js');
             await wasm.default();
@@ -76,7 +77,7 @@
 
             if (loadingText) loadingText.style.display = 'none';
 
-            window.wasmHandle.start(canvas).catch(console.error);
+            window.wasmHandle.start(canvas, isReadOnly).catch(console.error);
         } catch (error) {
             console.error('Erro a carregar o wasm', error);
             if (loadingText) {

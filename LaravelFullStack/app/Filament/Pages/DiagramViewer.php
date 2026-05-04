@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Filament\Resources\Diagrams\DiagramResource;
 use App\Models\Diagram;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Pages\Page;
@@ -41,6 +42,7 @@ class DiagramViewer extends Page
 
     public string $diagramId;
     public int $recordId;
+    public bool $isPublished = false;
     public string $diagramName;
     public string $schemaJson = '';
     // O Livewire passa o id do url automaticamente para aqui
@@ -56,7 +58,7 @@ class DiagramViewer extends Page
 
         $this->diagramName = $latestDiagram->name;
         $this->schemaJson = json_encode($latestDiagram->diagram);
-
+        $this->isPublished = (bool) $latestDiagram->is_published;
 
 //
 //        Notification::make()
@@ -87,10 +89,12 @@ class DiagramViewer extends Page
                                 ]),
 
                                 TextInput::make('diagramName')
+                                    ->disabled($this->isPublished)
                                     ->hiddenLabel()
                                     ->suffixIcon('heroicon-m-pencil')
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state) {
+                                        if ($this->isPublished) return;
                                         if (!empty(trim($state))) {
                                             Diagram::where('id', $this->recordId)->update([
                                                 'name' => $state,
@@ -107,12 +111,46 @@ class DiagramViewer extends Page
                                     ]),
 
                                 Actions::make([
+                                    Action::make('publish')
+                                        ->label('Publicar')
+                                        ->icon('heroicon-m-share')
+                                        ->color('gray')
+                                        ->modalHeading('Partilhar Diagrama')
+                                        ->modalDescription('Define quem tem acesso para visualizar este diagrama.')
+                                        ->modalSubmitActionLabel('Guardar Alterações')
+                                        ->modalWidth('md')
+                                        ->schema([
+                                            Radio::make('visibility')
+                                                ->label('Visibilidade')
+                                                ->options([
+                                                    'public' => 'Público',
+                                                    'link' => 'Apenas com o link',
+                                                ])
+                                                ->descriptions([
+                                                    'public' => 'O diagrama aparecerá na lista pública para todos os utilizadores.',
+                                                    'link' => 'Oculto da lista pública. Só quem tiver o link direto poderá aceder.',
+                                                ])
+
+                                                ->default(fn () => Diagram::where('id', $this->recordId)->value('visibility') ?? 'link')
+                                                ->required(),
+                                        ])
+                                        ->action(function (array $data) {
+                                            Diagram::where('id', $this->recordId)->update([
+                                                'visibility' => $data['visibility'],
+                                                'is_published' => true,
+                                            ]);
+
+                                            return redirect(request()->header('Referer'));
+                                        }),
+
                                     Action::make('save')
                                         ->label('Gravar')
-                                        ->icon('heroicon-m-cloud-arrow-up')
+                                        ->icon('heroicon-m-document-check')
                                         ->color('primary')
                                         ->action(fn() => $this->dispatch('trigger-rust-save')),
+
                                 ])
+                                    ->visible(! $this->isPublished)
                                     ->alignEnd(),
 
                             ]),
@@ -133,6 +171,8 @@ class DiagramViewer extends Page
     #[On('save-diagram')]
     public function handleDiagramSave($jsonPayload)
     {
+        if ($this->isPublished) return;
+
         Diagram::where('id', $this->recordId)->update([
             'diagram' => json_decode($jsonPayload, true),
         ]);

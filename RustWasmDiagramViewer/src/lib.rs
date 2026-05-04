@@ -38,7 +38,7 @@ mod wasm {
             }
         }
         #[wasm_bindgen]
-        pub async fn start(&self, canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
+        pub async fn start(&self, canvas: web_sys::HtmlCanvasElement, read_only: bool) -> Result<(), wasm_bindgen::JsValue> {
             eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
             let web_options = eframe::WebOptions::default();
@@ -53,7 +53,7 @@ mod wasm {
                     web_options,
                     Box::new(move |cc| {
                         let json_data = state_clone.lock().unwrap().clone();
-                        Ok(Box::new(TemplateApp::new(cc, json_data, save_trigger_clone)))
+                        Ok(Box::new(TemplateApp::new(cc, json_data, save_trigger_clone, read_only)))
                     }),
                 )
                 .await
