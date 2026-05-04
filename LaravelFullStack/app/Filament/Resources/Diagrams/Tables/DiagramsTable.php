@@ -13,6 +13,13 @@ class DiagramsTable
     {
         return $table
             ->columns([
+                TextColumn::make('name')
+                    ->label('Nome')
+                    ->sortable(),
+                TextColumn::make('description')
+                    ->label('Descrição')
+                    ->sortable(),
+
                 TextColumn::make('version')
                     ->label('Versão')
                     ->formatStateUsing(fn(string $state): string => 'v' . $state)
@@ -36,6 +43,6 @@ class DiagramsTable
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('Ainda não tem diagramas')
-            ->emptyStateDescription('Extraia uma base de dados e grave o seu primeiro diagrama para o ver aqui.');
+            ->emptyStateDescription('Gere o seu primeiro diagrama para o ver aqui.');
     }
 }

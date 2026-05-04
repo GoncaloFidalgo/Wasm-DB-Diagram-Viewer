@@ -8,11 +8,17 @@ mod wasm {
     use super::TemplateApp;
     use wasm_bindgen::{self, prelude::*};
     use std::sync::{Arc, Mutex};
- 
+
+    #[wasm_bindgen(js_namespace = window)]
+    extern "C" {
+        fn saveDiagramState(json_data: &str);
+    }
+
     #[wasm_bindgen]
     pub struct WebHandle {
         runner: eframe::WebRunner,
         shared_json_state: Arc<Mutex<String>>,
+        save_trigger: Arc<Mutex<bool>>,
     }
 
     #[wasm_bindgen]
@@ -22,9 +28,15 @@ mod wasm {
             Self {
                 runner: eframe::WebRunner::new(),
                 shared_json_state: Arc::new(Mutex::new(String::from("{}"))),
+                save_trigger: Arc::new(Mutex::new(false)),
             }
         }
-
+        #[wasm_bindgen]
+        pub fn trigger_save(&self) {
+            if let Ok(mut flag) = self.save_trigger.lock() {
+                *flag = true;
+            }
+        }
         #[wasm_bindgen]
         pub async fn start(&self, canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
             eframe::WebLogger::init(log::LevelFilter::Debug).ok();
@@ -33,13 +45,15 @@ mod wasm {
 
             let state_clone = Arc::clone(&self.shared_json_state);
 
+            let save_trigger_clone = Arc::clone(&self.save_trigger);
+
             self.runner
                 .start(
                     canvas,
                     web_options,
                     Box::new(move |cc| {
                         let json_data = state_clone.lock().unwrap().clone();
-                        Ok(Box::new(TemplateApp::new(cc, json_data)))
+                        Ok(Box::new(TemplateApp::new(cc, json_data, save_trigger_clone)))
                     }),
                 )
                 .await

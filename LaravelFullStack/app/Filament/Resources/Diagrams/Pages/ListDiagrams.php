@@ -12,15 +12,14 @@ use Illuminate\Support\Facades\Auth;
 class ListDiagrams extends ListRecords
 {
     protected static string $resource = DiagramResource::class;
-
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('extract')
+            Action::make('create')
                 ->label('Gerar Diagrama')
                 ->icon('heroicon-o-plus')
-                ->url('diagrams/extrair')
-                ->color('primary'),
+                ->color('primary')
+                ->url(fn () => DiagramResource::getUrl('create')),
         ];
     }
     public function getTabs(): array

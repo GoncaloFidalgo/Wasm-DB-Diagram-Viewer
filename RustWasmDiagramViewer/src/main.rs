@@ -1,6 +1,8 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use std::sync::{Arc, Mutex};
+
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -20,7 +22,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "rust_wasm_diagram_viewer",
         native_options,
-        Box::new(|cc| Ok(Box::new(rust_wasm_diagram_viewer::TemplateApp::new(cc, String::new())))),
+        Box::new(|cc| Ok(Box::new(rust_wasm_diagram_viewer::TemplateApp::new(cc, String::new(), Arc::new(Mutex::new(false)))))),
     )
 }
 
