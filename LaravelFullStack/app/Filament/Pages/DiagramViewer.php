@@ -54,8 +54,13 @@ class DiagramViewer extends Page
             ->orderByDesc('version')
             ->firstOrFail();
 
-        $this->recordId = $latestDiagram->id;
+        $isOwner = auth()->check() && auth()->id() === $latestDiagram->user_id;
 
+        if (!$latestDiagram->is_published && !$isOwner) {
+            abort(403, 'Este diagrama é privado ou não existe.');
+        }
+
+        $this->recordId = $latestDiagram->id;
         $this->diagramName = $latestDiagram->name;
         $this->schemaJson = json_encode($latestDiagram->diagram);
         $this->isPublished = (bool) $latestDiagram->is_published;
@@ -85,7 +90,8 @@ class DiagramViewer extends Page
                                         ->label('Diagramas')
                                         ->icon('heroicon-m-arrow-left')
                                         ->color('gray')
-                                        ->url(DiagramResource::getUrl('index')),
+                                        ->url(DiagramResource::getUrl('index'))
+                                        ->visible(fn() => auth()->check()),
                                 ]),
 
                                 TextInput::make('diagramName')
