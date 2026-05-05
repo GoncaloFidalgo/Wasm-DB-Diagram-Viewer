@@ -686,6 +686,26 @@ impl TemplateApp {
             // Desenhar a linha completa
             if !front_line {painter.line(pts[0..last_idx].to_vec(), line_stroke);}
 
+            let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
+            let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
+            if rel_first_response.clicked() || rel_second_response.clicked() {
+                if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
+
+                let item = Selected::Relation { relation: rela_idx, segment: None };
+                if self.selected.contains(&item) {
+                    self.selected.retain(|s| s != &item);
+                } else {
+                    self.selected.retain(|s| {
+                        !matches!(s,
+                            Selected::Relation { relation, segment: Some(_) }
+                            if *relation == rela_idx
+                        )
+                    });
+
+                    self.selected.push(item);
+                }
+            }
+
             // Segmentos
             for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
                 let (p1, p2) = (pair[0], pair[1]);
@@ -898,8 +918,36 @@ impl eframe::App for TemplateApp {
             }
 
             Window::new("Inspector")
+                .order(Order::Tooltip)
                 .show(ctx, |ui| {
-
+                    if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
+                        *self = Default::default();
+                        ctx.memory_mut(|mem| *mem = Default::default());
+                    }
+                    
+                    if let Some(selected) = self.selected.last() {
+                        match selected {
+                            Selected::Table { table, column } => {
+                                match column {
+                                    None => {
+                                        ui.label("Tabela, descrição:");
+                                        ui.text_edit_multiline(&mut self.tables[*table].description);
+                                    },
+                                    Some(column_idx) => {
+                                        ui.label("Coluna, descrição:");
+                                        ui.text_edit_multiline(&mut self.tables[*table].columns[*column_idx].description);
+                                    }
+                                }
+                            },
+                            Selected::Relation { relation, .. } => {
+                                ui.label("Relação, descrição:");
+                                ui.text_edit_multiline(&mut self.relations[*relation].description);
+                            }
+                        }
+                    } else {
+                        ui.label("Nenhum objeto selecionado.");
+                        ui.text_edit_multiline(&mut "");
+                    }
                 });
 
             // Colocar o background a controlar a Scene (PanAndDrag)
@@ -908,7 +956,10 @@ impl eframe::App for TemplateApp {
                 .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
             // Controlar zoom com uma barra lateral
-            Area::new(Id::new("DragValue_zoom")).anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0)).show(ctx, |ui|{
+            Area::new(Id::new("DragValue_zoom"))
+                .anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0))
+                .order(Order::Foreground)
+                .show(ctx, |ui|{
                 let center_vec = bg_response.rect.center().to_vec2();
                 let old_scale = scene_transform.scaling;
 
