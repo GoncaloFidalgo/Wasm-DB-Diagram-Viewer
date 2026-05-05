@@ -26,6 +26,12 @@ export class WebHandle {
         return this;
     }
     /**
+     * @param {boolean} read_only
+     */
+    set_read_only(read_only) {
+        wasm.webhandle_set_read_only(this.__wbg_ptr, read_only);
+    }
+    /**
      * @param {HTMLCanvasElement} canvas
      * @param {boolean} read_only
      * @returns {Promise<void>}

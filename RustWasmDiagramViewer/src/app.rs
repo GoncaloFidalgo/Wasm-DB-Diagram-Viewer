@@ -26,7 +26,12 @@ pub struct TemplateApp {
     pub save_trigger: Arc<Mutex<bool>>,
     #[serde(skip)]
     pub read_only: bool,
+    #[serde(skip)]
+    pub update_json: Arc<Mutex<Option<String>>>,
+    #[serde(skip)]
+    pub update_read_only: Arc<Mutex<Option<bool>>>,
 }
+
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
@@ -128,6 +133,8 @@ impl Default for TemplateApp {
             schema_loaded: false,
             save_trigger: Arc::new(Mutex::new(false)),
             read_only: true,
+            update_json: Arc::new(Mutex::new(None)),
+            update_read_only: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -554,6 +561,8 @@ impl TemplateApp {
         json_data: String,
         save_trigger_clone: Arc<Mutex<bool>>,
         read_only: bool,
+        update_json: Arc<Mutex<Option<String>>>,
+        update_read_only: Arc<Mutex<Option<bool>>>,
     ) -> Self {
         let mut app: TemplateApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -568,6 +577,8 @@ impl TemplateApp {
                     app_state.schema_loaded = true;
                     app_state.save_trigger = save_trigger_clone;
                     app_state.read_only = read_only;
+                    app_state.update_json = update_json.clone();
+                    app_state.update_read_only = update_read_only.clone();
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -575,8 +586,6 @@ impl TemplateApp {
         }
 
         app.apply_auto_layout();
-        app.save_trigger = save_trigger_clone;
-        app.read_only = read_only;
         app
     }
 
@@ -957,23 +966,61 @@ impl TemplateApp {
 impl eframe::App for TemplateApp {
     /// Chamada sempre que o UI necessita de ser desenhado outra vez (60x por segundo)
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        CentralPanel::default().show(ctx, |ui| {
-            // Verifica se o JS pediu para gravar
-            #[cfg(target_arch = "wasm32")]
-            if let Ok(mut flag) = self.save_trigger.lock() {
-                if *flag {
-                    *flag = false; // Desliga a flag
 
-                    // Gera o JSON e envia para o Laravel
-                    match serde_json::to_string(self) {
-                        Ok(json_string) => {
-                            saveDiagramState(&json_string);
-                        }
-                        Err(e) => tracing::error!("Erro: {}", e),
+        // Tira a mensagem do Read Only, fecha a porta do lock imediatamente
+        let new_read_only = if let Ok(mut update) = self.update_read_only.lock() {
+            update.take() // Tira o valor (Option<bool>) e deixa None lá dentro
+        } else {
+            None
+        };
+
+        // Aplica a mudança se houver alguma
+        if let Some(ro) = new_read_only {
+            self.read_only = ro;
+        }
+
+        // Tira a mensagem do JSON, fecha a porta do lock imediatamente
+        let new_json = if let Ok(mut update) = self.update_json.lock() {
+            update.take() // Tira a String (Option<String>) e deixa None
+        } else {
+            None
+        };
+
+        // Agora o `self` está sem locks e pode ser substituido
+        if let Some(json) = new_json {
+            match serde_json::from_str::<TemplateApp>(&json) {
+                Ok(mut new_app) => {
+                    // Passar as funções para a nova app
+                    new_app.save_trigger = self.save_trigger.clone();
+                    new_app.update_json = self.update_json.clone();
+                    new_app.update_read_only = self.update_read_only.clone();
+
+                    new_app.read_only = self.read_only;
+                    new_app.apply_auto_layout();
+
+                    // Substitui a aplicação inteira para aplicar o novo estado do diagrama
+                    *self = new_app;
+                }
+                Err(e) => log::error!("Falha ao aplicar novo JSON: {}", e),
+            }
+        }
+
+        // Verifica se o JS pediu para gravar
+        #[cfg(target_arch = "wasm32")]
+        if let Ok(mut flag) = self.save_trigger.lock() {
+            if *flag {
+                *flag = false; // Desliga a flag
+
+                // Gera o JSON e envia para o Laravel
+                match serde_json::to_string(self) {
+                    Ok(json_string) => {
+                        saveDiagramState(&json_string);
                     }
+                    Err(e) => tracing::error!("Erro: {}", e),
                 }
             }
-
+        }
+        CentralPanel::default().show(ctx, |ui| {
             let mut scene_transform =
                 ui.ctx()
                     .data(|d| match d.get_temp(Id::new("scene_transform")) {

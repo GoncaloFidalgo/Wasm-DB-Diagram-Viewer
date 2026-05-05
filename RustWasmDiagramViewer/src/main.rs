@@ -22,7 +22,14 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "rust_wasm_diagram_viewer",
         native_options,
-        Box::new(|cc| Ok(Box::new(rust_wasm_diagram_viewer::TemplateApp::new(cc, String::new(), Arc::new(Mutex::new(false)), false)))),
+        Box::new(|cc| Ok(Box::new(rust_wasm_diagram_viewer::TemplateApp::new(
+            cc,
+            String::new(),
+            Arc::new(Mutex::new(false)),
+            false,
+            Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(None)),
+        )))),
     )
 }
 

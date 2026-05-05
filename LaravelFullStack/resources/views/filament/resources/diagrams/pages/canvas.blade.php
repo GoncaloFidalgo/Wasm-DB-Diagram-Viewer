@@ -76,10 +76,11 @@
         const isReadOnly = canvas.dataset.readonly === 'true';
 
         try {
-            // 1. INJEÇÃO AQUI: Força o download do novo ficheiro JS
-            const wasm = await import('/wasm/rust_wasm_diagram_viewer.js?v={{ $jsVersion }}');
 
-            // 2. INJEÇÃO AQUI: Passa o caminho explícito do WASM com a versão para o inicializador
+            // Estas duas linhas são para forçar a atualização do ficheiro wasm para nao usar o que está na cache quando o wasm é atualizado
+            // Força o download do novo ficheiro JS
+            const wasm = await import('/wasm/rust_wasm_diagram_viewer.js?v={{ $jsVersion }}');
+            // Passa o caminho explícito do WASM com a versão para o inicializador
             await wasm.default('/wasm/rust_wasm_diagram_viewer_bg.wasm?v={{ $wasmVersion }}');
 
             window.wasmHandle = new wasm.WebHandle();
@@ -114,4 +115,23 @@
     window.saveDiagramState = function(jsonString) {
         Livewire.dispatch('save-diagram', { jsonPayload: jsonString });
     };
+
+    window.addEventListener('reload-wasm-schema', (event) => {
+        if (window.wasmHandle) {
+            const schema = event.detail.schema;
+            const isReadOnly = event.detail.isReadOnly;
+
+            // Carrega o novo JSON do diagrama
+            window.wasmHandle.load_data(schema);
+
+            // Atualiza o estado do diagrama diretamente no wasm
+            if (typeof window.wasmHandle.set_read_only === 'function') {
+                window.wasmHandle.set_read_only(isReadOnly);
+            }
+
+            // Força o eframe (Rust) a desenhar um frame novo para atualizar o ecrã imediatamente
+            const canvas = document.getElementById('canvas_id');
+            if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
+        }
+    });
 </script>

@@ -123,7 +123,7 @@ class DiagramViewer extends Page
                                         Select::make('selectedVersionId')
                                             ->hiddenLabel()
                                             ->options(function () {
-                                                $query = \App\Models\Diagram::where('diagram_id', $this->diagramId)
+                                                $query = Diagram::where('diagram_id', $this->diagramId)
                                                     ->orderByDesc('version');
 
                                                 if (!$this->isOwner) {
@@ -139,11 +139,18 @@ class DiagramViewer extends Page
                                             })
                                             ->live()
                                             ->afterStateUpdated(function ($state, DiagramViewer $livewire) {
+                                                $diagram = Diagram::find($state);
 
-                                                $novaVersao = Diagram::find($state)->version;
+                                                $livewire->recordId = $diagram->id;
+                                                $livewire->diagramName = $diagram->name;
+                                                $livewire->isPublished = (bool) $diagram->is_published;
+                                                $livewire->schemaJson = json_encode($diagram->diagram);
 
-
-                                                return redirect('/diagram/' . $livewire->diagramId . '?v=' . $novaVersao);
+                                                // Dispara um evento para o browser apanhar e atualizar o Canvas Rust
+                                                $livewire->dispatch('reload-wasm-schema',
+                                                    schema: $livewire->schemaJson,
+                                                    isReadOnly: $livewire->isPublished
+                                                );
                                             })->columnSpan(2),
 
 
@@ -220,7 +227,7 @@ class DiagramViewer extends Page
                                 ->action(fn() => $this->dispatch('trigger-rust-save')),
 
                         ])
-                            ->visible(!$this->isPublished)
+                            ->visible(fn() => !$this->isPublished)
                             ->alignEnd()
                             ->columnStart(5),
 
