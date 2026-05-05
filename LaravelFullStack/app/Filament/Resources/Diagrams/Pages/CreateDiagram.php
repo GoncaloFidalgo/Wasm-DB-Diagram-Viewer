@@ -96,7 +96,7 @@ class CreateDiagram extends Page
 
             Notification::make()->title('Extração Concluída')->success()->send();
         } catch (\Exception $e) {
-            Notification::make()->title('Erro ao extrair')->body($e->getMessage())->danger()->send();
+            Notification::make()->title('Erro ao extrair tabelas')->body('')->danger()->send();
         }
     }
 

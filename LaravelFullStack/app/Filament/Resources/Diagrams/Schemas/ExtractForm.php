@@ -43,6 +43,9 @@ class ExtractForm
                         ->directory('sqlite-uploads')
                         ->preserveFilenames()
                         ->required(fn(Get $get) => $get('engine') === 'sqlite')
+                        ->validationMessages([
+                            'required' => 'Insira um ficheiro SQLite (.sqlite, .db)',
+                        ])
                         ->visible(fn(Get $get) => $get('engine') === 'sqlite')
                         ->live()
                         ->afterStateUpdated(fn(CreateDiagram $livewire) => $livewire->extractedTables = []),
