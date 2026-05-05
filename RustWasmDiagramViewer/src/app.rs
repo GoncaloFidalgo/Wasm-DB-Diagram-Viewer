@@ -495,8 +495,8 @@ impl TemplateApp {
         let needs_layout = self.tables.first().map_or(false, |t| t.pos == pos2(0.0, 0.0));
 
         if needs_layout {
-            let mut x = 100.0;
-            let mut y = 100.0;
+            let mut x = 200.0;
+            let mut y = 200.0;
             for table in &mut self.tables {
                 table.pos = pos2(x, y);
                 x += 350.0;
@@ -781,12 +781,25 @@ impl eframe::App for TemplateApp {
 
             let (mut bg_response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 
+            // Colocar o background a controlar a Scene (PanAndDrag)
             Scene::new().drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
                 .zoom_range(Rangef::new(0.5, 2.0))
                 .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
+            // Controlar zoom com uma barra lateral
+            Area::new(Id::new("DragValue_zoom")).anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0)).show(ctx, |ui|{
+                let center_vec = bg_response.rect.center().to_vec2();
+                let old_scale = scene_transform.scaling;
+
+                ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
+                if old_scale != scene_transform.scaling {
+                    let world_vec = (center_vec - scene_transform.translation) / old_scale;
+                    scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
+                }
+            });
+
+            // Desativar scrolling fora do background
             if !bg_response.hovered() {
-                // Desativar scrolling fora do background
                 ctx.input_mut(|i| {
                     i.smooth_scroll_delta = Vec2::ZERO;
                 });
