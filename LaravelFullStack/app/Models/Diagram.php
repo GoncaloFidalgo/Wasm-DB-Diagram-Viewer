@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['diagram_id','name', 'description', 'version', 'diagram', 'user_id'])]
+#[Fillable(['diagram_id','name', 'description', 'visibility', 'is_published','version', 'diagram', 'user_id'])]
 class Diagram extends Model
 {
     // Passar o JSONB para array

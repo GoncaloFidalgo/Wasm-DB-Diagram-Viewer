@@ -47,6 +47,7 @@
 
     <canvas
         data-schema="{{ $this->schemaJson }}"
+        data-readonly="{{ $this->isPublished ? 'true' : 'false' }}"
         id="canvas_id"
         class="block outline-none"
     />
@@ -59,24 +60,35 @@
     </div>
 
 </div>
+@php
+    $jsPath = public_path('wasm/rust_wasm_diagram_viewer.js');
+    $wasmPath = public_path('wasm/rust_wasm_diagram_viewer_bg.wasm');
 
+    $jsVersion = file_exists($jsPath) ? filemtime($jsPath) : time();
+    $wasmVersion = file_exists($wasmPath) ? filemtime($wasmPath) : time();
+@endphp
 <script type="module">
     window.wasmHandle = null;
 
     async function initWasm() {
         const loadingText = document.getElementById('loading_text');
         const canvas = document.getElementById('canvas_id');
+        const isReadOnly = canvas.dataset.readonly === 'true';
 
         try {
-            const wasm = await import('/wasm/rust_wasm_diagram_viewer.js');
-            await wasm.default();
+
+            // Estas duas linhas são para forçar a atualização do ficheiro wasm para nao usar o que está na cache quando o wasm é atualizado
+            // Força o download do novo ficheiro JS
+            const wasm = await import('/wasm/rust_wasm_diagram_viewer.js?v={{ $jsVersion }}');
+            // Passa o caminho explícito do WASM com a versão para o inicializador
+            await wasm.default('/wasm/rust_wasm_diagram_viewer_bg.wasm?v={{ $wasmVersion }}');
 
             window.wasmHandle = new wasm.WebHandle();
             window.wasmHandle.load_data(canvas.dataset.schema);
 
             if (loadingText) loadingText.style.display = 'none';
 
-            window.wasmHandle.start(canvas).catch(console.error);
+            window.wasmHandle.start(canvas, isReadOnly).catch(console.error);
         } catch (error) {
             console.error('Erro a carregar o wasm', error);
             if (loadingText) {
@@ -84,6 +96,7 @@
             }
         }
     }
+
     window.addEventListener('trigger-rust-save', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_save();
@@ -92,7 +105,9 @@
             if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
         }
     });
+
     document.addEventListener('livewire:navigated', initWasm, { once: true });
+
     if (document.readyState === 'complete') {
         initWasm();
     }
@@ -100,4 +115,23 @@
     window.saveDiagramState = function(jsonString) {
         Livewire.dispatch('save-diagram', { jsonPayload: jsonString });
     };
+
+    window.addEventListener('reload-wasm-schema', (event) => {
+        if (window.wasmHandle) {
+            const schema = event.detail.schema;
+            const isReadOnly = event.detail.isReadOnly;
+
+            // Carrega o novo JSON do diagrama
+            window.wasmHandle.load_data(schema);
+
+            // Atualiza o estado do diagrama diretamente no wasm
+            if (typeof window.wasmHandle.set_read_only === 'function') {
+                window.wasmHandle.set_read_only(isReadOnly);
+            }
+
+            // Força o eframe (Rust) a desenhar um frame novo para atualizar o ecrã imediatamente
+            const canvas = document.getElementById('canvas_id');
+            if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
+        }
+    });
 </script>

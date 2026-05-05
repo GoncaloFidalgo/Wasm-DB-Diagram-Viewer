@@ -15,6 +15,10 @@ return new class extends Migration
 
             $table->text('description')->nullable();
 
+            $table->boolean('is_published')->default(false);
+
+            $table->string('visibility')->default('link');
+
             $table->uuid('diagram_id')->index();
 
             $table->unsignedInteger('version')->default(0);

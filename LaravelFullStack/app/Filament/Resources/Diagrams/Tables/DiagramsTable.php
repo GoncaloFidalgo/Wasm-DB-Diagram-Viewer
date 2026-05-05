@@ -28,14 +28,14 @@ class DiagramsTable
                     ->sortable(),
 
                 TextColumn::make('created_at')
-                    ->label('Data de Gravação')
+                    ->label('Data de criação')
                     ->dateTime('d/m/Y H:i')
                     ->sortable(),
             ])
             ->recordActions([
-                EditAction::make(),
+                //EditAction::make(),
                 Action::make('open')
-                    ->label('Abrir Diagrama')
+                    ->label('Abrir')
                     ->icon('heroicon-m-arrow-right-circle')
                     ->color('primary')
                     ->button()
