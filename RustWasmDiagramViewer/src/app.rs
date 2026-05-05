@@ -30,13 +30,13 @@ pub struct TemplateApp {
     pub update_json: Arc<Mutex<Option<String>>>,
     #[serde(skip)]
     pub update_read_only: Arc<Mutex<Option<bool>>>,
+    #[serde(skip)]
     pub selected: Vec<Selected>,
 }
 #[derive(PartialEq)]
 pub enum Selected {
     Table { table: usize, column: Option<usize> },
     Relation { relation: usize, segment: Option<usize> },
-
 }
 
 impl Default for TemplateApp {
@@ -138,7 +138,7 @@ impl Default for TemplateApp {
                 },
             ],
             schema_loaded: false,
-            selected: Vec::new()
+            selected: Vec::new(),
             save_trigger: Arc::new(Mutex::new(false)),
             read_only: true,
             update_json: Arc::new(Mutex::new(None)),
@@ -612,7 +612,6 @@ impl TemplateApp {
             }
         }
     }
-
     fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter, scene_transform: TSTransform) {
         let line_width: f32 = 2.5 * scene_transform.scaling;
         let table_proximity_limit: f32 = 20.0 * scene_transform.scaling;
@@ -624,24 +623,20 @@ impl TemplateApp {
 
         for (rela_idx, relation) in self.relations.iter_mut().enumerate() {
             let line_stroke = if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                    Stroke::new(line_width, Color32::BLUE)
-                } else {
-                    Stroke::new(line_width, Color32::from_gray(80))
-                };
+                Stroke::new(line_width, Color32::BLUE)
+            } else {
+                Stroke::new(line_width, Color32::from_gray(80))
+            };
 
             // Obter os retângulos para ligar a relação
             let (rect_a, rect_b) = ui.ctx().data(|data| {
                 (
-                    data.get_temp::<Rect>(Id::new((
-                        "column_rect",
-                        relation.tables[0],
-                        relation.columns[0],
-                    ))),
-                    data.get_temp::<Rect>(Id::new((
-                        "column_rect",
-                        relation.tables[1],
-                        relation.columns[1],
-                    ))),
+                    data.get_temp::<Rect>(
+                        Id::new(("column_rect", relation.tables[0], relation.columns[0]))
+                    ),
+                    data.get_temp::<Rect>(
+                        Id::new(("column_rect", relation.tables[1], relation.columns[1]))
+                    )
                 )
             });
 
@@ -668,11 +663,7 @@ impl TemplateApp {
                     pts.push(pos2(x_align, start.y));
                     pts.push(pos2(x_align, end.y));
                 } else {
-                    pts.push(pos2(
-                        relation.relation_segments[0] * scene_transform.scaling
-                            + scene_transform.translation.x,
-                        start.y,
-                    ));
+                    pts.push(pos2(relation.relation_segments[0] * scene_transform.scaling + scene_transform.translation.x, start.y));
                     for (i, seg) in relation.relation_segments.windows(2).enumerate() {
                         pts.push(scene_transform.mul_pos(if i % 2 == 0 {
                             pos2(seg[0], seg[1])
@@ -680,11 +671,7 @@ impl TemplateApp {
                             pos2(seg[1], seg[0])
                         }));
                     }
-                    pts.push(pos2(
-                        *relation.relation_segments.last().unwrap() * scene_transform.scaling
-                            + scene_transform.translation.x,
-                        end.y,
-                    ));
+                    pts.push(pos2(*relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x, end.y));
                 }
             }
             pts.push(end);
@@ -692,8 +679,7 @@ impl TemplateApp {
             // Ajustar posição da linha com base no limite dos retangulos das tabelas e desenhar as notações
 
             let last_idx = pts.len() - 1;
-            let enough_space =
-                (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
+            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
 
             // --- Primeira Tabela FK ---
             let start_goes_left = (if enough_space { pts[0].x } else { x_align }) > pts[1].x;
@@ -713,36 +699,26 @@ impl TemplateApp {
 
             if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
                 // Desenhar a notação One
-                let crow_up_base =
-                    pts[0] + vec2(start_dir * table_proximity_limit / 3.0, notation_size);
-                let down_up_base =
-                    pts[0] + vec2(start_dir * table_proximity_limit / 3.0, -notation_size);
+                let crow_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, notation_size);
+                let down_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, - notation_size);
                 painter.line_segment([crow_up_base, down_up_base], line_stroke);
             } else {
                 // Desenhar a notação Many
                 let crow_base = pts[0] + vec2(start_dir * table_proximity_limit / 1.5, 0.0);
                 painter.line_segment([crow_base, pts[0] + vec2(0.0, notation_size)], line_stroke);
-                painter.line_segment([crow_base, pts[0] + vec2(0.0, -notation_size)], line_stroke);
+                painter.line_segment([crow_base, pts[0] + vec2(0.0, - notation_size)], line_stroke);
             }
 
             // --- Segunda Tabela PK --
-            let end_goes_left = if enough_space {
-                pts[last_idx].x
-            } else {
-                x_align
-            } > pts[last_idx - 1].x;
+            let end_goes_left = if enough_space {pts[last_idx].x} else {x_align} > pts[last_idx-1].x;
             let end_dir = if end_goes_left { -1.0 } else { 1.0 };
 
             pts[last_idx].x += end_dir * end_offset;
             if !front_line {
                 let new_end_x = if end_goes_left {
-                    pts[last_idx - 1]
-                        .x
-                        .min(pts[last_idx].x - table_proximity_limit)
+                    pts[last_idx - 1].x.min(pts[last_idx].x - table_proximity_limit)
                 } else {
-                    pts[last_idx - 1]
-                        .x
-                        .max(pts[last_idx].x + table_proximity_limit)
+                    pts[last_idx - 1].x.max(pts[last_idx].x + table_proximity_limit)
                 };
                 pts[last_idx - 1].x = new_end_x;
                 pts[last_idx - 2].x = new_end_x;
@@ -750,49 +726,21 @@ impl TemplateApp {
 
             if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
                 // Desenhar a notação Zero
-                let crow_base_start = pts[last_idx]
-                    + vec2(
-                        end_dir * (table_proximity_limit / 2.0 - notation_size / 2.0),
-                        0.0,
-                    );
-                let crow_base_end = pts[last_idx]
-                    + vec2(
-                        end_dir * (table_proximity_limit / 2.0 + notation_size / 2.0),
-                        0.0,
-                    );
+                let crow_base_start = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 - notation_size/2.0), 0.0);
+                let crow_base_end = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 + notation_size/2.0), 0.0);
                 painter.line_segment([pts[last_idx], crow_base_start], line_stroke);
-                painter.line_segment(
-                    [
-                        crow_base_end,
-                        pts[last_idx - 1] + vec2(end_dir * line_width / 2.0, 0.0),
-                    ],
-                    line_stroke,
-                );
-                painter.circle_stroke(
-                    pts[last_idx] + vec2(end_dir * table_proximity_limit / 2.0, 0.0),
-                    notation_size / 2.0,
-                    line_stroke,
-                );
+                painter.line_segment([crow_base_end, pts[last_idx-1] + vec2(end_dir * line_width/2.0, 0.0)], line_stroke);
+                painter.circle_stroke(pts[last_idx] + vec2(end_dir * table_proximity_limit / 2.0, 0.0), notation_size/2.0, line_stroke);
             } else {
                 // Desenhar a notação One
-                painter.line_segment(
-                    [
-                        pts[last_idx],
-                        pts[last_idx - 1] + vec2(end_dir * line_width / 2.0, 0.0),
-                    ],
-                    line_stroke,
-                );
-                let crow_up_base =
-                    pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, notation_size);
-                let down_up_base =
-                    pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, -notation_size);
+                painter.line_segment([pts[last_idx], pts[last_idx-1] + vec2(end_dir * line_width/2.0, 0.0)], line_stroke);
+                let crow_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, notation_size);
+                let down_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, - notation_size);
                 painter.line_segment([crow_up_base, down_up_base], line_stroke);
             }
 
             // Desenhar a linha completa
-            if !front_line {
-                painter.line(pts[0..last_idx].to_vec(), line_stroke);
-            }
+            if !front_line {painter.line(pts[0..last_idx].to_vec(), line_stroke);}
 
             let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
@@ -825,15 +773,13 @@ impl TemplateApp {
                 let visual_rect = Rect::from_two_pos(p1, p2).expand(line_width / 2.0);
 
                 // Expandir a area para clicar
-                let hit_padding = if is_vertical {
-                    vec2(3.0, 0.0)
-                } else {
-                    vec2(0.0, 3.0)
-                };
+                let hit_padding = if is_vertical { vec2(3.0, 0.0) } else { vec2(0.0, 3.0) };
                 let interact_rect = visual_rect.expand2(hit_padding);
 
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
+if !self.read_only {
+
 
                 if seg_response.clicked() {
                     if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
@@ -937,154 +883,55 @@ impl TemplateApp {
 
                 let (start, end) = (scene_transform.inverse().mul_pos(start), scene_transform.inverse().mul_pos(end));
 
-                    Popup::menu(&seg_response).id(popup_id).show(|ui| {
+                if seg_response.drag_stopped() {
+                    verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                }
+
+                if seg_idx != 0 {
+                    let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
+                    let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
+                    let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
+                    let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
+
+                    Popup::menu(&pt_response).id(pt_popup_id).show(|ui| {
                         if ui.button("⟳").clicked() {
                             relation.relation_segments.clear();
                         }
                     });
 
-                    // --- Mudanças de estado (Start / End Drag / Right Click) ---
-                    if seg_response.drag_started()
-                        || seg_response.secondary_clicked()
-                        || seg_response.drag_stopped()
-                    {
-                        let interact_real_center =
-                            scene_transform.inverse().mul_pos(interact_rect.center());
-                        if auto_align {
-                            relation.relation_segments.push(interact_real_center.x);
-                        }
-                        relation.relation_segments[seg_idx] = if is_vertical {
-                            interact_real_center.x
-                        } else {
-                            interact_real_center.y
-                        };
-
-                        Popup::open_id(ui.ctx(), popup_id);
+                    if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
+                        let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
+                        relation.relation_segments[seg_idx - 1] = if is_vertical { pt_real_center.y } else { pt_real_center.x };
+                        relation.relation_segments[seg_idx]     = if is_vertical { pt_real_center.x } else { pt_real_center.y };
+                        Popup::open_id(ui.ctx(), pt_popup_id);
                     }
 
-                    // --- Arrastar ---
-                    if seg_response.dragged() {
-                        let delta = if is_vertical {
-                            seg_response.drag_delta().x
-                        } else {
-                            seg_response.drag_delta().y
-                        };
-                        relation.relation_segments[seg_idx] += delta / scene_transform.scaling;
+                    if pt_response.hovered() {
+                        painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
+
+                        if pt_response.dragged() {
+                            let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
+                            let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
+
+                            relation.relation_segments[seg_idx - 1] += delta_prev / scene_transform.scaling;
+                            relation.relation_segments[seg_idx]     += delta_curr / scene_transform.scaling;
+                        }
                     }
 
-                    // --- Dividir linha ---
-                    if seg_response.secondary_clicked() {
-                        let mid = (if is_vertical {
-                            (p1.y + p2.y) / 2.0 - scene_transform.translation.y
-                        } else {
-                            (p1.x + p2.x) / 2.0 - scene_transform.translation.x
-                        }) / scene_transform.scaling;
-                        let next = (if is_vertical {
-                            (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x
-                        } else {
-                            (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y
-                        }) / scene_transform.scaling;
-                        relation.relation_segments.insert(seg_idx + 1, mid);
-                        relation.relation_segments.insert(seg_idx + 2, next);
+                    if pt_response.secondary_clicked() {
+                        relation.relation_segments.remove(seg_idx);
+                        relation.relation_segments.remove(seg_idx - 1);
                     }
 
-                    let (start, end) = (
-                        scene_transform.inverse().mul_pos(start),
-                        scene_transform.inverse().mul_pos(end),
-                    );
-
-                    if seg_response.drag_stopped() {
-                        verify_line_segment_joins(
-                            &mut relation.relation_segments,
-                            seg_idx,
-                            start.y,
-                            end.y,
-                        );
-                    }
-
-                    if seg_idx != 0 {
-                        let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
-                        let pt_rect = Rect::from_center_size(
-                            p1,
-                            vec2(interact_hitbox_size, interact_hitbox_size),
-                        );
-                        let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
-                        let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
-
-                        Popup::menu(&pt_response).id(pt_popup_id).show(|ui| {
-                            if ui.button("⟳").clicked() {
-                                relation.relation_segments.clear();
-                            }
-                        });
-
-                        if pt_response.drag_started()
-                            || pt_response.secondary_clicked()
-                            || pt_response.drag_stopped()
-                        {
-                            let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
-                            relation.relation_segments[seg_idx - 1] = if is_vertical {
-                                pt_real_center.y
-                            } else {
-                                pt_real_center.x
-                            };
-                            relation.relation_segments[seg_idx] = if is_vertical {
-                                pt_real_center.x
-                            } else {
-                                pt_real_center.y
-                            };
-                            Popup::open_id(ui.ctx(), pt_popup_id);
-                        }
-
-                        if pt_response.hovered() {
-                            painter.circle_filled(
-                                p1,
-                                4.5 * scene_transform.scaling,
-                                Color32::from_gray(130),
-                            );
-
-                            if pt_response.dragged() {
-                                let delta_prev = if is_vertical {
-                                    pt_response.drag_delta().y
-                                } else {
-                                    pt_response.drag_delta().x
-                                };
-                                let delta_curr = if is_vertical {
-                                    pt_response.drag_delta().x
-                                } else {
-                                    pt_response.drag_delta().y
-                                };
-
-                                relation.relation_segments[seg_idx - 1] +=
-                                    delta_prev / scene_transform.scaling;
-                                relation.relation_segments[seg_idx] +=
-                                    delta_curr / scene_transform.scaling;
-                            }
-                        }
-
-                        if pt_response.secondary_clicked() {
-                            relation.relation_segments.remove(seg_idx);
-                            relation.relation_segments.remove(seg_idx - 1);
-                        }
-
-                        if pt_response.drag_stopped() {
-                            verify_line_segment_joins(
-                                &mut relation.relation_segments,
-                                seg_idx,
-                                start.y,
-                                end.y,
-                            );
-                            verify_line_segment_joins(
-                                &mut relation.relation_segments,
-                                seg_idx - 1,
-                                start.y,
-                                end.y,
-                            );
-                        }
+                    if pt_response.drag_stopped() {
+                        verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                        verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
                     }
                 }
+}
             }
         }
-        
+
         for relation_segment in relation_segments_to_change.iter() {
             if relation_segment[1] == 1 {
                 for (segment_idx, segment) in self.relations[relation_segment[0]].relation_segments.iter_mut().enumerate() {
