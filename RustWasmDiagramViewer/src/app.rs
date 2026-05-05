@@ -185,7 +185,7 @@ const COL_SIZE: f32 = 26.0;
 // --- Implementações das estruturas ---
 
 impl Table {
-    pub fn ui(&mut self, ctx: &Context, id: usize, relations: &mut Vec<Relation>, scene_transform: TSTransform) {
+    pub fn ui(&mut self, ctx: &Context, id: usize, relations: &mut Vec<Relation>, scene_transform: TSTransform, selected: &mut Vec<Selected>) {
         let table_width = ctx.fonts_mut(|f| {
             let header_width = f.layout_no_wrap(
                 self.name.clone(),
@@ -232,14 +232,24 @@ impl Table {
                     .zoom_range(Rangef::point(scene_transform.scaling))
                     .drag_pan_buttons(DragPanButtons::empty())
                     .show(ui, &mut Rect::from_pos((ui.available_size()/(2.0*scene_transform.scaling)).to_pos2()), |ui| {
-                        self.header_ui(ui, table_width);
+                        if self.header_ui(ui, table_width).clicked() {
+                            selected.clear();
+                            selected.push(Selected::Table { table: id, column: None });
+                        }
                         ui.add_space(2.0);
-                        for column in self.columns.iter() {
-                            column.ui(ui, table_width);
+                        for (col_idx, column) in self.columns.iter().enumerate() {
+                            if column.ui(ui, table_width).clicked() {
+                                selected.clear();
+                                selected.push(Selected::Table { table: id, column: Some(col_idx) });
+                            }
                         }
                         ui.add_space(6.0);
                     });
 
+                if inner_response.response.clicked() {
+                    selected.clear();
+                    selected.push(Selected::Table { table: id, column: None });
+                }
                 if inner_response.response.dragged() {
                     self.pos += inner_response.response.drag_delta();
                     ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
@@ -282,7 +292,7 @@ impl Table {
         }
     }
 
-    fn header_ui(&mut self, ui: &mut Ui, table_width: f32) {
+    fn header_ui(&mut self, ui: &mut Ui, table_width: f32) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, HEADER_SIZE),
             Sense::click(),
@@ -308,11 +318,13 @@ impl Table {
                 popup_divider(ui);
                 popup_description(ui, &self.description);
             });
+        
+        response
     }
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_width: f32) {
+    fn ui(&self, ui: &mut Ui, table_width: f32) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, COL_SIZE),
             Sense::click(),
@@ -432,6 +444,8 @@ impl Column {
                 popup_divider(ui);
                 popup_description(ui, &self.description);
             });
+        
+        response
     }
 }
 fn popup_frame() -> Frame {
@@ -581,7 +595,7 @@ impl TemplateApp {
             let end = rect_b.center();
             let end_offset = rect_b.width() / 2.0;
 
-            let front_line = relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 5.0 * scene_transform.scaling;
+            let front_line = relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 3.0 * scene_transform.scaling;
             let auto_align = relation.relation_segments.is_empty();
             let x_align = (start.x + end.x) / 2.0;
 
@@ -907,7 +921,7 @@ impl eframe::App for TemplateApp {
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
-                table.ui(ctx, i, &mut self.relations, scene_transform);
+                table.ui(ctx, i, &mut self.relations, scene_transform, &mut self.selected);
             }
 
             // Desenhar as linhas das relações
