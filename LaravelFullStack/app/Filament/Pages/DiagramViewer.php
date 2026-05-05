@@ -185,9 +185,10 @@ class DiagramViewer extends Page
                                 ->label('Publicar')
                                 ->icon('heroicon-m-share')
                                 ->color('gray')
-                                ->modalHeading('Partilhar Diagrama')
-                                ->modalDescription('Define quem tem acesso para visualizar este diagrama.')
-                                ->modalSubmitActionLabel('Guardar Alterações')
+                                ->modalHeading('Publicar Diagrama')
+                                ->modalDescription('Define quem pode visualizar este diagrama.')
+                                ->modalSubmitActionLabel('Publicar')
+                                ->modalCancelActionLabel('Cancelar')
                                 ->modalWidth('md')
                                 ->schema([
                                     Radio::make('visibility')
@@ -197,8 +198,8 @@ class DiagramViewer extends Page
                                             'link' => 'Apenas com o link',
                                         ])
                                         ->descriptions([
-                                            'public' => 'O diagrama aparecerá na lista pública para todos os utilizadores.',
-                                            'link' => 'Oculto da lista pública. Só quem tiver o link direto poderá aceder.',
+                                            'public' => 'Qualquer utilizador pode visualizar este diagrama.',
+                                            'link' => 'Apenas utilizadores com o link podem visualizar este diagrama.',
                                         ])
                                         ->default(fn() => Diagram::where('id', $this->recordId)->value('visibility') ?? 'link')
                                         ->required(),
