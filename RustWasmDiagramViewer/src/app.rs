@@ -30,6 +30,7 @@ pub struct TemplateApp {
     pub update_json: Arc<Mutex<Option<String>>>,
     #[serde(skip)]
     pub update_read_only: Arc<Mutex<Option<bool>>>,
+    #[serde(skip)]
     pub selected: Vec<Selected>,
 }
 #[derive(PartialEq)]
@@ -138,7 +139,7 @@ impl Default for TemplateApp {
                 },
             ],
             schema_loaded: false,
-            selected: Vec::new()
+            selected: Vec::new(),
             save_trigger: Arc::new(Mutex::new(false)),
             read_only: true,
             update_json: Arc::new(Mutex::new(None)),
@@ -836,7 +837,7 @@ impl TemplateApp {
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
 
                 if seg_response.clicked() {
-                    if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
+                    if !ui.input(|i| { i.modifiers.command_only() }) { self.selected.clear(); }
 
                     if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
                         self.selected.retain(|s| {
@@ -866,7 +867,7 @@ impl TemplateApp {
                         )
                     }).count();
 
-                    if selected_segments == last_idx-2 {
+                    if selected_segments == last_idx - 2 {
                         self.selected.retain(|s| {
                             !matches!(s,
                                 Selected::Relation { relation, segment: Some(_) }
@@ -883,59 +884,59 @@ impl TemplateApp {
                 } else if seg_response.hovered() {
                     painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
                 }
+                if !self.read_only {
+                    Popup::menu(&seg_response).id(popup_id).show(|ui| {
+                        if ui.button("⟳").clicked() {
+                            relation.relation_segments.clear();
+                            self.selected.clear();
+                        }
+                    });
 
-                Popup::menu(&seg_response).id(popup_id).show(|ui| {
-                    if ui.button("⟳").clicked() {
-                        relation.relation_segments.clear();
-                        self.selected.clear();
+                    // --- Mudanças de estado (Start / End Drag / Right Click) ---
+                    if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
+                        let interact_real_center = scene_transform.inverse().mul_pos(interact_rect.center());
+                        if auto_align {
+                            relation.relation_segments.push(interact_real_center.x);
+                        }
+                        relation.relation_segments[seg_idx] = if is_vertical { interact_real_center.x } else { interact_real_center.y };
+
+                        Popup::open_id(ui.ctx(), popup_id);
                     }
-                });
 
-                // --- Mudanças de estado (Start / End Drag / Right Click) ---
-                if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
-                    let interact_real_center = scene_transform.inverse().mul_pos(interact_rect.center());
-                    if auto_align {
-                        relation.relation_segments.push(interact_real_center.x);
-                    }
-                    relation.relation_segments[seg_idx] = if is_vertical { interact_real_center.x } else { interact_real_center.y };
-
-                    Popup::open_id(ui.ctx(), popup_id);
-                }
-
-                // --- Arrastar ---
-                if seg_response.dragged() {
-                    let delta = seg_response.drag_delta() / scene_transform.scaling;
-                    delta_used = delta;
-                    for selected in self.selected.iter() {
-                        match selected {
-                            Selected::Table { table, .. } => {
-                                self.tables[*table].pos += delta;
-                            },
-                            Selected::Relation { relation, segment } => {
-                                match segment {
-                                    None => {
-                                        relation_segments_to_change.push([*relation, 1, if *relation == rela_idx {seg_idx} else {usize::MAX}]);
-                                    },
-                                    Some(selected_seg_idx) => {
-                                        if *relation == rela_idx && *selected_seg_idx == seg_idx {continue;}
-                                        relation_segments_to_change.push([*relation, 0, *selected_seg_idx]);
+                    // --- Arrastar ---
+                    if seg_response.dragged() {
+                        let delta = seg_response.drag_delta() / scene_transform.scaling;
+                        delta_used = delta;
+                        for selected in self.selected.iter() {
+                            match selected {
+                                Selected::Table { table, .. } => {
+                                    self.tables[*table].pos += delta;
+                                },
+                                Selected::Relation { relation, segment } => {
+                                    match segment {
+                                        None => {
+                                            relation_segments_to_change.push([*relation, 1, if *relation == rela_idx { seg_idx } else { usize::MAX }]);
+                                        },
+                                        Some(selected_seg_idx) => {
+                                            if *relation == rela_idx && *selected_seg_idx == seg_idx { continue; }
+                                            relation_segments_to_change.push([*relation, 0, *selected_seg_idx]);
+                                        }
                                     }
                                 }
                             }
                         }
+                        relation.relation_segments[seg_idx] += if is_vertical { delta.x } else { delta.y };
                     }
-                    relation.relation_segments[seg_idx] += if is_vertical { delta.x } else { delta.y };
-                }
 
-                // --- Dividir linha ---
-                if seg_response.secondary_clicked() {
-                    let mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
-                    let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
-                    relation.relation_segments.insert(seg_idx + 1, mid);
-                    relation.relation_segments.insert(seg_idx + 2, next);
-                }
+                    // --- Dividir linha ---
+                    if seg_response.secondary_clicked() {
+                        let mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
+                        let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
+                        relation.relation_segments.insert(seg_idx + 1, mid);
+                        relation.relation_segments.insert(seg_idx + 2, next);
+                    }
 
-                let (start, end) = (scene_transform.inverse().mul_pos(start), scene_transform.inverse().mul_pos(end));
+                    let (start, end) = (scene_transform.inverse().mul_pos(start), scene_transform.inverse().mul_pos(end));
 
                     Popup::menu(&seg_response).id(popup_id).show(|ui| {
                         if ui.button("⟳").clicked() {
