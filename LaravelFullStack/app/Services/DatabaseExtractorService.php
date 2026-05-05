@@ -229,17 +229,16 @@ class DatabaseExtractorService
 
         foreach ($indexes as $index) {
             if ($index['primary']) {
-                $pkColumns = $index['columns']; // Usually an array with one column name
+                $pkColumns = $index['columns'];
                 break;
             }
         }
 
-        // 3. Format them for our Rust canvas
         foreach ($columns as $col) {
             $normalized[] = (object)[
                 'name' => $col['name'],
                 'type' => $col['type_name'], // e.g., 'varchar', 'integer'
-                'notnull' => !$col['nullable'], // Invert nullable to get 'notnull'
+                'notnull' => !$col['nullable'],
                 'pk' => in_array($col['name'], $pkColumns),
             ];
         }

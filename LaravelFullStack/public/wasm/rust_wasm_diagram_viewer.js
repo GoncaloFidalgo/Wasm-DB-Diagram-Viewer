@@ -26,12 +26,22 @@ export class WebHandle {
         return this;
     }
     /**
+     * @param {boolean} read_only
+     */
+    set_read_only(read_only) {
+        wasm.webhandle_set_read_only(this.__wbg_ptr, read_only);
+    }
+    /**
      * @param {HTMLCanvasElement} canvas
+     * @param {boolean} read_only
      * @returns {Promise<void>}
      */
-    start(canvas) {
-        const ret = wasm.webhandle_start(this.__wbg_ptr, canvas);
+    start(canvas, read_only) {
+        const ret = wasm.webhandle_start(this.__wbg_ptr, canvas, read_only);
         return ret;
+    }
+    trigger_save() {
+        wasm.webhandle_trigger_save(this.__wbg_ptr);
     }
 }
 if (Symbol.dispose) WebHandle.prototype[Symbol.dispose] = WebHandle.prototype.free;
