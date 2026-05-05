@@ -32,6 +32,9 @@ class ExtractForm
                         ])
                         ->default('sqlite')
                         ->live()
+                        ->afterStateUpdated(function (CreateDiagram $livewire) {
+                            $livewire->extractedTables = [];
+                        })
                         ->required(),
 
                     FileUpload::make('filePath')
@@ -39,27 +42,29 @@ class ExtractForm
                         ->disk('local')
                         ->directory('sqlite-uploads')
                         ->preserveFilenames()
-                        ->required(fn (Get $get) => $get('engine') === 'sqlite')
-                        ->visible(fn (Get $get) => $get('engine') === 'sqlite'),
+                        ->required(fn(Get $get) => $get('engine') === 'sqlite')
+                        ->visible(fn(Get $get) => $get('engine') === 'sqlite')
+                        ->live()
+                        ->afterStateUpdated(fn(CreateDiagram $livewire) => $livewire->extractedTables = []),
 
                     Grid::make(2)
-                        ->visible(fn (Get $get) => $get('engine') === 'mysql')
+                        ->visible(fn(Get $get) => $get('engine') === 'mysql')
                         ->schema([
                             TextInput::make('mysql_host')
                                 ->label('Host')
                                 ->default('')
-                                ->required(fn (Get $get) => $get('engine') === 'mysql'),
+                                ->required(fn(Get $get) => $get('engine') === 'mysql'),
                             TextInput::make('mysql_port')
                                 ->label('Porta')
                                 ->default('')
-                                ->required(fn (Get $get) => $get('engine') === 'mysql'),
+                                ->required(fn(Get $get) => $get('engine') === 'mysql'),
                             TextInput::make('mysql_database')
                                 ->label('Base de Dados')
                                 ->columnSpan(2)
-                                ->required(fn (Get $get) => $get('engine') === 'mysql'),
+                                ->required(fn(Get $get) => $get('engine') === 'mysql'),
                             TextInput::make('mysql_username')
                                 ->label('Utilizador')
-                                ->required(fn (Get $get) => $get('engine') === 'mysql'),
+                                ->required(fn(Get $get) => $get('engine') === 'mysql'),
                             TextInput::make('mysql_password')
                                 ->label('Password')
                                 ->password(),
@@ -69,7 +74,7 @@ class ExtractForm
                         Action::make('extract')
                             ->label('Extrair Tabelas')
                             ->size('lg')
-                            ->action(fn (CreateDiagram $livewire) => $livewire->processExtraction())
+                            ->action(fn(CreateDiagram $livewire) => $livewire->processExtraction())
                     ])->fullWidth(),
                 ]),
         ];
@@ -82,12 +87,16 @@ class ExtractForm
     {
         return [
             Section::make('2. Detalhes e Tabelas')
+                ->visible(fn (CreateDiagram $livewire) => !empty($livewire->extractedTables))
                 ->schema([
                     Grid::make(2)->schema([
                         TextInput::make('name')
                             ->label('Nome do Diagrama')
                             ->placeholder('Ex: Base de Dados Chinook')
                             ->required()
+                            ->validationMessages([
+                                'required' => 'O nome do diagrama é obrigatório.',
+                            ])
                             ->maxLength(255)
                             ->columnSpan(1),
 
@@ -101,7 +110,7 @@ class ExtractForm
 
                     CheckboxList::make('selectedTables')
                         ->label('Selecione as Tabelas para o Diagrama')
-                        ->options(fn (CreateDiagram $livewire) => empty($livewire->extractedTables) ? [] : array_combine($livewire->extractedTables, $livewire->extractedTables))
+                        ->options(fn(CreateDiagram $livewire) => empty($livewire->extractedTables) ? [] : array_combine($livewire->extractedTables, $livewire->extractedTables))
                         ->columns(3)
                         ->gridDirection('row')
                         ->bulkToggleable()
@@ -113,11 +122,11 @@ class ExtractForm
 
                     Actions::make([
                         Action::make('open')
-                            ->label('Abrir Diagrama')
+                            ->label('Gerar Diagrama')
                             ->color('success')
                             ->size('lg')
-                            ->icon('heroicon-m-arrow-right-circle')
-                            ->action(fn (CreateDiagram $livewire) => $livewire->openDiagram())
+                            //->icon('heroicon-m-arrow-right-circle')
+                            ->action(fn(CreateDiagram $livewire) => $livewire->openDiagram())
                     ])->fullWidth(),
                 ]),
         ];

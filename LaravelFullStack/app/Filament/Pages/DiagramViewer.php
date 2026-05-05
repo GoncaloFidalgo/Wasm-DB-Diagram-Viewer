@@ -55,7 +55,7 @@ class DiagramViewer extends Page
         $this->diagramId = $id;
 
         // Obter sempre a versão mais recente do diagrama
-        $query = \App\Models\Diagram::where('diagram_id', $this->diagramId);
+        $query = Diagram::where('diagram_id', $this->diagramId);
 
         // Se houver "?v=2" no URL, carrega essa versão. Senão, carrega a mais recente.
         if (request()->has('v')) {
@@ -72,7 +72,7 @@ class DiagramViewer extends Page
         }
 
         $this->recordId = $diagram->id;
-        $this->selectedVersionId = $diagram->id; // <-- Preenche o Dropdown com a versão atual
+        $this->selectedVersionId = $diagram->id;
         $this->diagramName = $diagram->name;
         $this->isPublished = (bool) $diagram->is_published;
         $this->schemaJson = json_encode($diagram->diagram);
@@ -85,9 +85,9 @@ class DiagramViewer extends Page
                 Section::make()
                     ->compact()
                     ->schema([
-                        Grid::make(5)
+                        Grid::make(4)
                             ->schema([
-                                Grid::make(7)
+                                Grid::make(8)
                                     ->schema([
                                         Actions::make([
                                             Action::make('back')
@@ -126,7 +126,6 @@ class DiagramViewer extends Page
                                                 $query = \App\Models\Diagram::where('diagram_id', $this->diagramId)
                                                     ->orderByDesc('version');
 
-                                                // Se for um visitante anónimo, só vê as versões que foram publicadas!
                                                 if (!$this->isOwner) {
                                                     $query->where('is_published', true);
                                                 }
@@ -134,59 +133,28 @@ class DiagramViewer extends Page
                                                 return $query->get()->mapWithKeys(function ($d) {
                                                     $label = 'Versão ' . $d->version;
                                                     if ($d->is_published) $label .= ' (Publicada)';
-                                                    if ($d->id === $this->recordId) $label .= ' - Atual'; // Marca a que estamos a ver
+                                                    if ($d->id === $this->recordId) $label .= ' - Atual';
                                                     return [$d->id => $label];
                                                 });
                                             })
-                                            ->live() // Dispara assim que escolhes outra opção
-                                            ->afterStateUpdated(function ($state) {
-                                                // Encontra o número da versão escolhida
-                                                $novaVersao = \App\Models\Diagram::find($state)->version;
-                                                // Redireciona para o mesmo URL mas com ?v=X (recarrega o Rust limpo)
-                                                return redirect(request()->fullUrlWithQuery(['v' => $novaVersao]));
-                                            }),
+                                            ->live()
+                                            ->afterStateUpdated(function ($state, DiagramViewer $livewire) {
 
-                                        // 4. Botão Nova Versão (Apenas visível se estiver publicado e for o dono)
-//                                        Actions::make([
-//                                            Action::make('newVersion')
-//                                                ->label('Nova Versão')
-//                                                ->icon('heroicon-m-document-plus')
-//                                                ->color('primary')
-//                                                ->action(function () {
-//                                                    $latest = \App\Models\Diagram::where('id', $this->recordId)->first();
-//
-//                                                    \App\Models\Diagram::create([
-//                                                        'diagram_id' => $latest->diagram_id,
-//                                                        'name' => $latest->name,
-//                                                        'description' => $latest->description,
-//                                                        'diagram' => $latest->diagram,
-//                                                        'user_id' => $latest->user_id,
-//                                                        'version' => $latest->version + 1,
-//                                                        'visibility' => 'link',
-//                                                        'is_published' => false,
-//                                                    ]);
-//
-//                                                    \Filament\Notifications\Notification::make()
-//                                                        ->title('Nova versão criada!')
-//                                                        ->body('Já podes voltar a editar o teu diagrama.')
-//                                                        ->success()
-//                                                        ->send();
-//
-//                                                    // Remove o "?v=" do link para garantir que carrega a versão mais recente que acabámos de criar
-//                                                    return redirect(request()->url());
-//                                                })
-//                                                ->visible(fn() => $this->isPublished && $this->isOwner),
-//                                        ]),
+                                                $novaVersao = Diagram::find($state)->version;
+
+
+                                                return redirect('/diagram/' . $livewire->diagramId . '?v=' . $novaVersao);
+                                            })->columnSpan(2),
+
+
                                         Actions::make([
                                             Action::make('newVersion')
                                                 ->label('Nova Versão')
                                                 ->icon('heroicon-m-document-plus')
-                                                ->color('primary') // Fica azul para chamar a atenção
+                                                ->color('primary')
                                                 ->action(function () {
-                                                    // Vai buscar o diagrama atual
                                                     $latest = Diagram::where('id', $this->recordId)->first();
 
-                                                    // Cria uma cópia exata, mas com versão + 1 e desbloqueada!
                                                     Diagram::create([
                                                         'diagram_id' => $latest->diagram_id,
                                                         'name' => $latest->name,
@@ -194,21 +162,20 @@ class DiagramViewer extends Page
                                                         'diagram' => $latest->diagram,
                                                         'user_id' => $latest->user_id,
                                                         'version' => $latest->version + 1,
-                                                        'visibility' => 'link', // Volta a ser "privado" até decidires publicar
-                                                        'is_published' => false, // DESTRANCA O CANVAS!
+                                                        'visibility' => 'link',
+                                                        'is_published' => false,
                                                     ]);
 
                                                     Notification::make()
                                                         ->title('Nova versão criada!')
-                                                        ->body('Já podes voltar a editar o teu diagrama.')
+                                                        ->body('')
                                                         ->success()
                                                         ->send();
 
-                                                    // Recarrega a página. O mount() vai puxar a versão nova automaticamente.
                                                     return redirect(request()->header('Referer'));
                                                 })
-                                                ->visible(fn() => $this->isPublished && $this->isOwner), // Só mostra ao dono quando está trancado
-                                        ]),
+                                                ->visible(fn() => $this->isPublished && $this->isOwner),
+                                        ])->columnSpan(2),
 
 
                             ])->columnSpan(3),
