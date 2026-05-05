@@ -31,6 +31,13 @@ class DiagramsTable
                     ->label('Data de criação')
                     ->dateTime('d/m/Y H:i')
                     ->sortable(),
+
+                TextColumn::make('is_published')
+                    ->label('Publicado')
+                    ->formatStateUsing(fn (bool $state): string => $state ? 'Sim' : 'Não')
+                    ->badge()
+                    ->color(fn (bool $state): string => $state ? 'success' : 'danger')
+                    ->sortable(),
             ])
             ->recordActions([
                 //EditAction::make(),
@@ -39,7 +46,7 @@ class DiagramsTable
                     ->icon('heroicon-m-arrow-right-circle')
                     ->color('primary')
                     ->button()
-                    ->url(fn ($record) => '/diagram/' . $record->diagram_id),
+                    ->url(fn ($record) => '/diagram/' . $record->diagram_id . '?v=' . $record->version),
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('Ainda não tem diagramas')

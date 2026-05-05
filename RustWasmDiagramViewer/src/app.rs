@@ -283,38 +283,38 @@ impl Table {
                         }
                         ui.add_space(6.0);
                     });
-    if !read_only {
-                if inner_response.response.clicked() {
-                    selected.clear();
-                    selected.push(Selected::Table { table: id, column: None });
-                }
-                if inner_response.response.dragged() {
-                    self.pos += inner_response.response.drag_delta();
-                    ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-                }
-                if inner_response.response.drag_stopped() {
-                    for relation in relations {
-                        if relation.tables[0] == id || relation.tables[1] == id {
-                            let (rect_a, rect_b) = ctx.data(|data| {
-                                (
-                                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
-                                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
-                                )
-                            });
+                if !read_only {
+                    if inner_response.response.clicked() {
+                        selected.clear();
+                        selected.push(Selected::Table { table: id, column: None });
+                    }
+                    if inner_response.response.dragged() {
+                        self.pos += inner_response.response.drag_delta();
+                        ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+                    }
+                    if inner_response.response.drag_stopped() {
+                        for relation in relations {
+                            if relation.tables[0] == id || relation.tables[1] == id {
+                                let (rect_a, rect_b) = ctx.data(|data| {
+                                    (
+                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                                    )
+                                });
 
-                            let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                                continue;
-                            };
+                                let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                                    continue;
+                                };
 
-                            verify_line_segment_joins(&mut relation.relation_segments, 0, scene_transform.inverse().mul_pos(rect_a.center()).y, scene_transform.inverse().mul_pos(rect_b.center()).y);
-                            if relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
-                                let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
-                                self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                                verify_line_segment_joins(&mut relation.relation_segments, 0, scene_transform.inverse().mul_pos(rect_a.center()).y, scene_transform.inverse().mul_pos(rect_b.center()).y);
+                                if relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
+                                    let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
+                                    self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                                }
                             }
                         }
                     }
                 }
-              }
             });
         if let Some(inner_window_response) = inner_window_response {
             let table_rect = inner_window_response.response.rect;
@@ -343,22 +343,22 @@ impl Table {
 
         if response.hovered() { ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand); }
 
-            if response.hovered() {
-                ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
-            }
-            let bg = if response.hovered() {
-                HEADER_HOVER
-            } else {
-                HEADER_BG
-            };
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, bg);
-            ui.painter().text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                &self.name,
-                FontId::proportional(14.0),
-                HEADER_TEXT,
-            );
+        if response.hovered() {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+        }
+        let bg = if response.hovered() {
+            HEADER_HOVER
+        } else {
+            HEADER_BG
+        };
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, bg);
+        ui.painter().text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            &self.name,
+            FontId::proportional(14.0),
+            HEADER_TEXT,
+        );
 
         Popup::menu(&response)
             .frame(popup_frame())
@@ -379,7 +379,7 @@ impl Table {
                 popup_divider(ui);
                 popup_description(ui, &self.description);
             });
-        
+
         response
     }
 }
@@ -505,15 +505,15 @@ impl Column {
                         } else {
                             "not null"
                         })
-                        .size(11.5)
-                        .color(Color32::from_gray(130)),
+                            .size(11.5)
+                            .color(Color32::from_gray(130)),
                     );
                 });
 
                 popup_divider(ui);
                 popup_description(ui, &self.description);
             });
-        
+
         response
     }
 }
@@ -778,58 +778,58 @@ impl TemplateApp {
 
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
-if !self.read_only {
+                if !self.read_only {
 
 
-                if seg_response.clicked() {
-                    if !ui.input(|i| { i.modifiers.command_only() }) { self.selected.clear(); }
+                    if seg_response.clicked() {
+                        if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
 
-                    if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                        self.selected.retain(|s| {
-                            !matches!(s,
+                        if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                            self.selected.retain(|s| {
+                                !matches!(s,
                                 Selected::Relation { relation, segment: None }
                                 if *relation == rela_idx
                             )
-                        });
-                        if auto_align { self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }); } else {
-                            for (selected_segment_idx, _) in relation.relation_segments.iter().enumerate() {
-                                self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(selected_segment_idx) });
+                            });
+                            if auto_align { self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }); } else {
+                                for (selected_segment_idx, _) in relation.relation_segments.iter().enumerate() {
+                                    self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(selected_segment_idx) });
+                                }
                             }
                         }
-                    }
 
-                    let item = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
-                    if self.selected.contains(&item) {
-                        self.selected.retain(|s| s != &item);
-                    } else {
-                        self.selected.push(item);
-                    }
+                        let item = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
+                        if self.selected.contains(&item) {
+                            self.selected.retain(|s| s != &item);
+                        } else {
+                            self.selected.push(item);
+                        }
 
-                    let selected_segments = self.selected.iter().filter(|s| {
-                        matches!(s,
+                        let selected_segments = self.selected.iter().filter(|s| {
+                            matches!(s,
                             Selected::Relation { relation, segment: Some(_) }
                             if *relation == rela_idx
                         )
-                    }).count();
+                        }).count();
 
-                    if selected_segments == last_idx - 2 {
-                        self.selected.retain(|s| {
-                            !matches!(s,
+                        if selected_segments == last_idx-2 {
+                            self.selected.retain(|s| {
+                                !matches!(s,
                                 Selected::Relation { relation, segment: Some(_) }
                                 if *relation == rela_idx
                             )
-                        });
+                            });
 
-                        self.selected.push(Selected::Relation { relation: rela_idx, segment: None });
+                            self.selected.push(Selected::Relation { relation: rela_idx, segment: None });
+                        }
                     }
-                }
 
-                if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) || self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                    painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
-                } else if seg_response.hovered() {
-                    painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
-                }
-                if !self.read_only {
+                    if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) || self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                        painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
+                    } else if seg_response.hovered() {
+                        painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
+                    }
+
                     Popup::menu(&seg_response).id(popup_id).show(|ui| {
                         if ui.button("⟳").clicked() {
                             relation.relation_segments.clear();
@@ -860,10 +860,10 @@ if !self.read_only {
                                 Selected::Relation { relation, segment } => {
                                     match segment {
                                         None => {
-                                            relation_segments_to_change.push([*relation, 1, if *relation == rela_idx { seg_idx } else { usize::MAX }]);
+                                            relation_segments_to_change.push([*relation, 1, if *relation == rela_idx {seg_idx} else {usize::MAX}]);
                                         },
                                         Some(selected_seg_idx) => {
-                                            if *relation == rela_idx && *selected_seg_idx == seg_idx { continue; }
+                                            if *relation == rela_idx && *selected_seg_idx == seg_idx {continue;}
                                             relation_segments_to_change.push([*relation, 0, *selected_seg_idx]);
                                         }
                                     }
@@ -883,52 +883,52 @@ if !self.read_only {
 
                     let (start, end) = (scene_transform.inverse().mul_pos(start), scene_transform.inverse().mul_pos(end));
 
-                if seg_response.drag_stopped() {
-                    verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
-                }
-
-                if seg_idx != 0 {
-                    let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
-                    let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
-                    let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
-                    let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
-
-                    Popup::menu(&pt_response).id(pt_popup_id).show(|ui| {
-                        if ui.button("⟳").clicked() {
-                            relation.relation_segments.clear();
-                        }
-                    });
-
-                    if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
-                        let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
-                        relation.relation_segments[seg_idx - 1] = if is_vertical { pt_real_center.y } else { pt_real_center.x };
-                        relation.relation_segments[seg_idx]     = if is_vertical { pt_real_center.x } else { pt_real_center.y };
-                        Popup::open_id(ui.ctx(), pt_popup_id);
-                    }
-
-                    if pt_response.hovered() {
-                        painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
-
-                        if pt_response.dragged() {
-                            let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
-                            let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
-
-                            relation.relation_segments[seg_idx - 1] += delta_prev / scene_transform.scaling;
-                            relation.relation_segments[seg_idx]     += delta_curr / scene_transform.scaling;
-                        }
-                    }
-
-                    if pt_response.secondary_clicked() {
-                        relation.relation_segments.remove(seg_idx);
-                        relation.relation_segments.remove(seg_idx - 1);
-                    }
-
-                    if pt_response.drag_stopped() {
+                    if seg_response.drag_stopped() {
                         verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
-                        verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
+                    }
+
+                    if seg_idx != 0 {
+                        let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
+                        let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
+                        let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
+                        let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
+
+                        Popup::menu(&pt_response).id(pt_popup_id).show(|ui| {
+                            if ui.button("⟳").clicked() {
+                                relation.relation_segments.clear();
+                            }
+                        });
+
+                        if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
+                            let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
+                            relation.relation_segments[seg_idx - 1] = if is_vertical { pt_real_center.y } else { pt_real_center.x };
+                            relation.relation_segments[seg_idx]     = if is_vertical { pt_real_center.x } else { pt_real_center.y };
+                            Popup::open_id(ui.ctx(), pt_popup_id);
+                        }
+
+                        if pt_response.hovered() {
+                            painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
+
+                            if pt_response.dragged() {
+                                let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
+                                let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
+
+                                relation.relation_segments[seg_idx - 1] += delta_prev / scene_transform.scaling;
+                                relation.relation_segments[seg_idx]     += delta_curr / scene_transform.scaling;
+                            }
+                        }
+
+                        if pt_response.secondary_clicked() {
+                            relation.relation_segments.remove(seg_idx);
+                            relation.relation_segments.remove(seg_idx - 1);
+                        }
+
+                        if pt_response.drag_stopped() {
+                            verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y);
+                            verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y);
+                        }
                     }
                 }
-}
             }
         }
 
@@ -1037,7 +1037,7 @@ impl eframe::App for TemplateApp {
                         *self = Default::default();
                         ctx.memory_mut(|mem| *mem = Default::default());
                     }
-                    
+
                     if let Some(selected) = self.selected.last() {
                         match selected {
                             Selected::Table { table, column } => {
@@ -1073,15 +1073,15 @@ impl eframe::App for TemplateApp {
                 .anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0))
                 .order(Order::Foreground)
                 .show(ctx, |ui|{
-                let center_vec = bg_response.rect.center().to_vec2();
-                let old_scale = scene_transform.scaling;
+                    let center_vec = bg_response.rect.center().to_vec2();
+                    let old_scale = scene_transform.scaling;
 
-                ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
-                if old_scale != scene_transform.scaling {
-                    let world_vec = (center_vec - scene_transform.translation) / old_scale;
-                    scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
-                }
-            });
+                    ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
+                    if old_scale != scene_transform.scaling {
+                        let world_vec = (center_vec - scene_transform.translation) / old_scale;
+                        scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
+                    }
+                });
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
