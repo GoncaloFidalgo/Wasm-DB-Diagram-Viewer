@@ -35,7 +35,7 @@ class DiagramsTable
             ->recordActions([
                 EditAction::make(),
                 Action::make('open')
-                    ->label('Abrir Diagrama')
+                    ->label('Abrir')
                     ->icon('heroicon-m-arrow-right-circle')
                     ->color('primary')
                     ->button()
