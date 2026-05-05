@@ -21,6 +21,13 @@ pub struct TemplateApp {
     pub relations: Vec<Relation>,
     #[serde(skip)] // Não presistir, não serializar para guardar no laravel
     pub schema_loaded: bool,
+    #[serde(skip)]
+    pub selected: Vec<Selected>,
+}
+#[derive(PartialEq)]
+pub enum Selected {
+    Table { table: usize, column: Option<usize> },
+    Relation { relation: usize, segment: Option<usize> },
 }
 impl Default for TemplateApp {
     fn default() -> Self {
@@ -120,7 +127,8 @@ impl Default for TemplateApp {
                     description: String::new()
                 }
             ],
-            schema_loaded: false
+            schema_loaded: false,
+            selected: Vec::new()
         }
     }
 }
@@ -540,9 +548,16 @@ impl TemplateApp {
         let notation_size: f32 = 8.0 * scene_transform.scaling;
         let interact_hitbox_size: f32 = 14.0 * scene_transform.scaling;
 
-        let line_stroke = Stroke::new(line_width, Color32::from_gray(80));
+        let mut relation_segments_to_change: Vec<[usize; 3]> = Vec::new();//relationID/fullRelationBinary/segmentID
+        let mut delta_used = Vec2::ZERO;
 
         for (rela_idx, relation) in self.relations.iter_mut().enumerate() {
+            let line_stroke = if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                    Stroke::new(line_width, Color32::BLUE)
+                } else {
+                    Stroke::new(line_width, Color32::from_gray(80))
+                };
+
             // Obter os retângulos para ligar a relação
             let (rect_a, rect_b) = ui.ctx().data(|data| {
                 (
@@ -674,13 +689,59 @@ impl TemplateApp {
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
 
-                if seg_response.hovered() {
+                if seg_response.clicked() {
+                    if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
+
+                    if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                        self.selected.retain(|s| {
+                            !matches!(s,
+                                Selected::Relation { relation, segment: None }
+                                if *relation == rela_idx
+                            )
+                        });
+                        if auto_align { self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }); } else {
+                            for (selected_segment_idx, _) in relation.relation_segments.iter().enumerate() {
+                                self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(selected_segment_idx) });
+                            }
+                        }
+                    }
+
+                    let item = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
+                    if self.selected.contains(&item) {
+                        self.selected.retain(|s| s != &item);
+                    } else {
+                        self.selected.push(item);
+                    }
+
+                    let selected_segments = self.selected.iter().filter(|s| {
+                        matches!(s,
+                            Selected::Relation { relation, segment: Some(_) }
+                            if *relation == rela_idx
+                        )
+                    }).count();
+
+                    if selected_segments == last_idx-2 {
+                        self.selected.retain(|s| {
+                            !matches!(s,
+                                Selected::Relation { relation, segment: Some(_) }
+                                if *relation == rela_idx
+                            )
+                        });
+
+                        self.selected.push(Selected::Relation { relation: rela_idx, segment: None });
+                    }
+                }
+
+                if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) || self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                    painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
+                } else if seg_response.hovered() {
                     painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
                 }
 
                 Popup::menu(&seg_response).id(popup_id).show(|ui| {
                     if ui.button("⟳").clicked() {
                         relation.relation_segments.clear();
+                        self.selected.clear();
                     }
                 });
 
@@ -697,8 +758,27 @@ impl TemplateApp {
 
                 // --- Arrastar ---
                 if seg_response.dragged() {
-                    let delta = if is_vertical { seg_response.drag_delta().x } else { seg_response.drag_delta().y };
-                    relation.relation_segments[seg_idx] += delta / scene_transform.scaling;
+                    let delta = seg_response.drag_delta() / scene_transform.scaling;
+                    delta_used = delta;
+                    for selected in self.selected.iter() {
+                        match selected {
+                            Selected::Table { table, .. } => {
+                                self.tables[*table].pos += delta;
+                            },
+                            Selected::Relation { relation, segment } => {
+                                match segment {
+                                    None => {
+                                        relation_segments_to_change.push([*relation, 1, if *relation == rela_idx {seg_idx} else {usize::MAX}]);
+                                    },
+                                    Some(selected_seg_idx) => {
+                                        if *relation == rela_idx && *selected_seg_idx == seg_idx {continue;}
+                                        relation_segments_to_change.push([*relation, 0, *selected_seg_idx]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    relation.relation_segments[seg_idx] += if is_vertical { delta.x } else { delta.y };
                 }
 
                 // --- Dividir linha ---
@@ -757,7 +837,17 @@ impl TemplateApp {
                     }
                 }
             }
-
+        }
+        
+        for relation_segment in relation_segments_to_change.iter() {
+            if relation_segment[1] == 1 {
+                for (segment_idx, segment) in self.relations[relation_segment[0]].relation_segments.iter_mut().enumerate() {
+                    if segment_idx == relation_segment[2] {continue;}
+                    *segment += if segment_idx % 2 == 0 {delta_used.x} else {delta_used.y};
+                }
+            } else {
+                self.relations[relation_segment[0]].relation_segments[relation_segment[2]] += if relation_segment[2] % 2 == 0 {delta_used.x} else {delta_used.y};
+            }
         }
     }
 }
@@ -781,6 +871,23 @@ impl eframe::App for TemplateApp {
 
             let (mut bg_response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 
+            // Desativar scrolling fora do background
+            if !bg_response.hovered() {
+                ctx.input_mut(|i| {
+                    i.smooth_scroll_delta = Vec2::ZERO;
+                });
+            }
+
+            // Remover todos os objetos selecionados da lista
+            if bg_response.clicked() {
+                self.selected.clear();
+            }
+
+            Window::new("Inspector")
+                .show(ctx, |ui| {
+
+                });
+
             // Colocar o background a controlar a Scene (PanAndDrag)
             Scene::new().drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
                 .zoom_range(Rangef::new(0.5, 2.0))
@@ -797,13 +904,6 @@ impl eframe::App for TemplateApp {
                     scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
                 }
             });
-
-            // Desativar scrolling fora do background
-            if !bg_response.hovered() {
-                ctx.input_mut(|i| {
-                    i.smooth_scroll_delta = Vec2::ZERO;
-                });
-            }
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
