@@ -1025,9 +1025,10 @@ impl eframe::App for TemplateApp {
             let (mut bg_response, painter) =
                 ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 
-            // Desativar scrolling fora do background
+            // Desativar scrolling fora do background e aplicar na scene
             if !bg_response.hovered() {
                 ctx.input_mut(|i| {
+                    scene_transform.translation += i.smooth_scroll_delta;
                     i.smooth_scroll_delta = Vec2::ZERO;
                 });
             }
