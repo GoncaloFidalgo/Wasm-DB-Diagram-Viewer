@@ -270,13 +270,13 @@ impl Table {
                     .zoom_range(Rangef::point(scene_transform.scaling))
                     .drag_pan_buttons(DragPanButtons::empty())
                     .show(ui, &mut Rect::from_pos((ui.available_size()/(2.0*scene_transform.scaling)).to_pos2()), |ui| {
-                        if self.header_ui(ui, table_width).clicked() {
+                        if self.header_ui(ui, table_width).clicked() && !read_only {
                             selected.clear();
                             selected.push(Selected::Table { table: id, column: None });
                         }
                         ui.add_space(2.0);
                         for (col_idx, column) in self.columns.iter().enumerate() {
-                            if column.ui(ui, table_width).clicked() {
+                            if column.ui(ui, table_width).clicked() && !read_only {
                                 selected.clear();
                                 selected.push(Selected::Table { table: id, column: Some(col_idx) });
                             }
@@ -343,9 +343,6 @@ impl Table {
 
         if response.hovered() { ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand); }
 
-        if response.hovered() {
-            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
-        }
         let bg = if response.hovered() {
             HEADER_HOVER
         } else {
@@ -744,7 +741,7 @@ impl TemplateApp {
 
             let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
-            if rel_first_response.clicked() || rel_second_response.clicked() {
+            if !self.read_only && (rel_first_response.clicked() || rel_second_response.clicked()) {
                 if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
 
                 let item = Selected::Relation { relation: rela_idx, segment: None };
@@ -761,6 +758,22 @@ impl TemplateApp {
                     self.selected.push(item);
                 }
             }
+            let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
+            Popup::menu(&rel_first_response).id(popup_first_id).show(|ui| {
+                if !self.read_only && ui.button("⟳ Reset").clicked() {
+                    relation.relation_segments.clear();
+                    self.selected.clear();
+                }
+                popup_description(ui, &relation.description);
+            });
+            let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
+            Popup::menu(&rel_second_response).id(popup_second_id).show(|ui| {
+                if !self.read_only && ui.button("⟳ Reset").clicked() {
+                    relation.relation_segments.clear();
+                    self.selected.clear();
+                }
+                popup_description(ui, &relation.description);
+            });
 
             // Segmentos
             for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
@@ -778,9 +791,15 @@ impl TemplateApp {
 
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
+                Popup::menu(&seg_response).id(popup_id).show(|ui| {
+                    if !self.read_only && ui.button("⟳ Reset").clicked() {
+                        relation.relation_segments.clear();
+                        self.selected.clear();
+                    }
+                    popup_description(ui, &relation.description);
+                });
+
                 if !self.read_only {
-
-
                     if seg_response.clicked() {
                         if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
 
@@ -829,13 +848,6 @@ impl TemplateApp {
                     } else if seg_response.hovered() {
                         painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
                     }
-
-                    Popup::menu(&seg_response).id(popup_id).show(|ui| {
-                        if ui.button("⟳").clicked() {
-                            relation.relation_segments.clear();
-                            self.selected.clear();
-                        }
-                    });
 
                     // --- Mudanças de estado (Start / End Drag / Right Click) ---
                     if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
@@ -1009,16 +1021,11 @@ impl eframe::App for TemplateApp {
                         Some(scene_transform) => scene_transform,
                         None => TSTransform::default(),
                     });
-
-            // Desativar scrolling fora do background
+            
             let (mut bg_response, painter) =
                 ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 
-            Scene::new()
-                .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
-                .zoom_range(Rangef::new(0.5, 2.0))
-                .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
-
+            // Desativar scrolling fora do background
             if !bg_response.hovered() {
                 ctx.input_mut(|i| {
                     i.smooth_scroll_delta = Vec2::ZERO;
@@ -1029,6 +1036,11 @@ impl eframe::App for TemplateApp {
             if bg_response.clicked() {
                 self.selected.clear();
             }
+
+            Scene::new()
+                .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
+                .zoom_range(Rangef::new(0.5, 2.0))
+                .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
             Window::new("Inspector")
                 .order(Order::Tooltip)
