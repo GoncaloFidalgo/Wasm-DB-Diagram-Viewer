@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\Diagrams\Schemas;
 
 use App\Filament\Resources\Diagrams\Pages\CreateDiagram;
+use Closure;
+use Filament\Forms\Components\ViewField;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Actions;
@@ -13,6 +15,9 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\CheckboxList;
+use Filament\Schemas\Components\Utilities\Set;
+use Illuminate\Validation\ValidationException;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class ExtractForm
 {
@@ -37,19 +42,53 @@ class ExtractForm
                         })
                         ->required(),
 
-                    FileUpload::make('filePath')
+//                    FileUpload::make('filePath')
+//                        ->label('Ficheiro SQLite (.sqlite, .db)')
+//                        ->disk('local')
+//                        ->directory('sqlite-uploads')
+//                        ->preserveFilenames()
+//
+//                        ->required(fn(Get $get) => $get('engine') === 'sqlite')
+//                        ->visible(fn(Get $get) => $get('engine') === 'sqlite')
+//                        ->live()
+//                        ->afterStateUpdated(function (FileUpload $component, Set $set, $state, CreateDiagram $livewire) {
+//                            if (!$state) {
+//                                $livewire->extractedTables = [];
+//                                return;
+//                            }
+//
+//                            // A NOSSA BARREIRA DE FERRO
+//                            if ($state instanceof TemporaryUploadedFile) {
+//                                $ext = strtolower($state->getClientOriginalExtension());
+//
+//                                if (!in_array($ext, ['sqlite', 'db'])) {
+//                                    // Apaga o ficheiro visualmente e do servidor
+//                                    $set('filePath', null);
+//
+//                                    // Atira o erro por baixo do campo (impede o utilizador de avançar)
+//                                    throw ValidationException::withMessages([
+//                                        $component->getStatePath() => 'O ficheiro tem de ter a extensão .sqlite ou .db',
+//                                    ]);
+//                                }
+//                            }
+//
+//                            // Se for um .db ou .sqlite válido, limpa as tabelas antigas e prossegue
+//                            $livewire->extractedTables = [];
+//                        }),
+                    ViewField::make('filePath')
                         ->label('Ficheiro SQLite (.sqlite, .db)')
-                        ->disk('local')
-                        ->directory('sqlite-uploads')
-                        ->preserveFilenames()
+                        ->view('filament.forms.components.custom-sqlite-upload')
                         ->required(fn(Get $get) => $get('engine') === 'sqlite')
-                        ->validationMessages([
-                            'required' => 'Insira um ficheiro SQLite (.sqlite, .db)',
-                        ])
                         ->visible(fn(Get $get) => $get('engine') === 'sqlite')
                         ->live()
-                        ->afterStateUpdated(fn(CreateDiagram $livewire) => $livewire->extractedTables = []),
+                        ->afterStateUpdated(function ($state, CreateDiagram $livewire) {
+                            if (!$state) {
+                                $livewire->extractedTables = [];
+                                return;
+                            }
 
+                            $livewire->extractedTables = [];
+                        }),
                     Grid::make(2)
                         ->visible(fn(Get $get) => $get('engine') === 'mysql')
                         ->schema([
