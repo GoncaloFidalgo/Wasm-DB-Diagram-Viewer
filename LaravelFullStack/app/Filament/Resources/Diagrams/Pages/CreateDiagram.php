@@ -125,7 +125,6 @@ class CreateDiagram extends Page
     public function openDiagram()
     {
         $detailsState = $this->detailsForm->getState();
-
         $connState = $this->connectionForm->getState();
 
         $selectedTables = $detailsState['selectedTables'];
@@ -134,9 +133,26 @@ class CreateDiagram extends Page
         $finalJsonSchema = '';
 
         if ($connState['engine'] === 'sqlite') {
-            $filePath = $connState['filePath'] ?? null;
-            $relativePath = is_array($filePath) ? array_values($filePath)[0] : $filePath;
-            $absolutePath = Storage::disk('local')->path($relativePath);
+            $filePathData = $connState['filePath'] ?? null;
+            if (!$filePathData) throw new \Exception('Ficheiro SQLite não encontrado.');
+
+            $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
+            $absolutePath = '';
+            
+            if ($fileItem instanceof TemporaryUploadedFile) {
+                $absolutePath = $fileItem->getRealPath();
+            }
+            elseif (is_string($fileItem)) {
+                if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
+                    $absolutePath = $fileItem;
+                } else {
+                    $absolutePath = Storage::disk('local')->path($fileItem);
+                }
+            }
+
+            if (!file_exists($absolutePath)) {
+                throw new \Exception("Ficheiro não encontrado no disco: " . $absolutePath);
+            }
 
             $finalJsonSchema = $extractor->buildDiagramSchema($absolutePath, $selectedTables, 'sqlite');
         } else {
