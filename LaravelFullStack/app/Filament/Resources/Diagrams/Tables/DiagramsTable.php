@@ -19,6 +19,7 @@ class DiagramsTable
             ->columns([
                 TextColumn::make('name')
                     ->label('Nome')
+                    ->searchable()
                     ->sortable(),
                 TextColumn::make('description')
                     ->label('Descrição')
@@ -69,8 +70,10 @@ class DiagramsTable
                     ->icon('heroicon-m-arrow-right-circle')
                     ->color('primary')
                     ->button()
-                    ->url(fn ($record) => '/diagram/' . $record->diagram_id . '?v=' . $record->version),
+                    ->url(fn ($record) => '/diagram/' . $record->diagram_id . '?v=' . $record->version . '&source=mine'),
             ])
+            ->searchPlaceholder('Pesquisar pelo nome')
+
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('Ainda não tem diagramas')
             ->emptyStateDescription('Gere o seu primeiro diagrama para o ver aqui.');

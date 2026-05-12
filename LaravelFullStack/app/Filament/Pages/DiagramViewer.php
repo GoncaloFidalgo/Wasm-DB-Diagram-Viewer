@@ -49,10 +49,17 @@ class DiagramViewer extends Page
     public $selectedVersionId;
     public string $diagramName;
     public string $schemaJson = '';
+    public string $source = 'mine';
 
     // O Livewire passa o id do url automaticamente para aqui
     public function mount($id = null)
     {
+        $requestedSource = request('source');
+
+        if (in_array($requestedSource, ['public', 'mine'])) {
+            $this->source = $requestedSource;
+        }
+
         $this->diagramId = $id;
 
         // Obter sempre a versão mais recente do diagrama
@@ -95,7 +102,13 @@ class DiagramViewer extends Page
                                                 ->label('Diagramas')
                                                 ->icon('heroicon-m-arrow-left')
                                                 ->color('gray')
-                                                ->url(DiagramResource::getUrl('index'))
+                                                ->url(function () {
+                                                    if ($this->source === 'public') {
+                                                        return PublicDiagrams::getUrl();
+                                                    }
+
+                                                    return DiagramResource::getUrl('index');
+                                                })
                                                 ->visible(fn() => auth()->check()),
                                         ])->columnSpan(1),
 
@@ -217,6 +230,7 @@ class DiagramViewer extends Page
                                 Actions::make([
                                     PublishDiagramAction::make()
                                 ])
+                                    ->visible(fn() => $this->isOwner)
                                     ->alignEnd()
                                     ->columnStart(5),
                             ]),

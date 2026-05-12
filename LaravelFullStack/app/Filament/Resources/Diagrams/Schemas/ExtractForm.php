@@ -79,6 +79,9 @@ class ExtractForm
                         ->label('Ficheiro SQLite (.sqlite, .db)')
                         ->view('filament.forms.components.custom-sqlite-upload')
                         ->required(fn(Get $get) => $get('engine') === 'sqlite')
+                        ->validationMessages([
+                            'required' => 'Carrega um ficheiro .sqlite ou .db para prosseguir.',
+                        ])
                         ->visible(fn(Get $get) => $get('engine') === 'sqlite')
                         ->live()
                         ->afterStateUpdated(function ($state, CreateDiagram $livewire) {

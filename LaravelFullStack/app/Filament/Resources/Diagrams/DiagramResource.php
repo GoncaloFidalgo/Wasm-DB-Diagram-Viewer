@@ -12,6 +12,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\DB;
 
 class DiagramResource extends Resource
 {
@@ -20,10 +21,10 @@ class DiagramResource extends Resource
     //protected static bool $shouldRegisterNavigation = false;
     #region Labels
     protected static ?string $modelLabel = 'Diagrama'; // Editar/Apagar
-    protected static ?string $pluralModelLabel = 'Diagramas'; // Navegação/Listagem
+    protected static ?string $pluralModelLabel = 'Os meus Diagramas'; // Navegação/Listagem
     protected static bool $hasTitleCaseModelLabel = false; // Maiuscula na primeira letra de cada palavra
-    protected static ?string $navigationLabel = 'Diagramas';
-
+    protected static ?string $navigationLabel = 'Os meus Diagramas';
+    protected static ?string $slug = 'meus-diagramas';
     #endregion
 
     public static function form(Schema $schema): Schema
@@ -42,7 +43,16 @@ class DiagramResource extends Resource
             //
         ];
     }
-
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()
+            ->where('user_id', auth()->id())
+            ->where('version', function ($subquery) {
+                $subquery->select(DB::raw('MAX(version)'))
+                    ->from('diagrams as d2')
+                    ->whereColumn('d2.diagram_id', 'diagrams.diagram_id');
+            });
+    }
     public static function getPages(): array
     {
         return [
