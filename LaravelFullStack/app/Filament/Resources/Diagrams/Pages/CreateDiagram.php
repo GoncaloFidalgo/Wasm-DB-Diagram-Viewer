@@ -116,7 +116,7 @@ class CreateDiagram extends Page
             //$e->getMessage()
             Notification::make()
                 ->title('Erro ao extrair tabelas')
-                ->body()
+                ->body('')
                 ->danger()
                 ->send();
         }
