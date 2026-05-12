@@ -21,6 +21,7 @@ mod wasm {
         save_trigger: Arc<Mutex<bool>>,
         update_json: Arc<Mutex<Option<String>>>,
         update_read_only: Arc<Mutex<Option<bool>>>,
+        export_trigger: Arc<Mutex<bool>>,
     }
 
     #[wasm_bindgen]
@@ -33,11 +34,18 @@ mod wasm {
                 save_trigger: Arc::new(Mutex::new(false)),
                 update_json: Arc::new(Mutex::new(None)),
                 update_read_only: Arc::new(Mutex::new(None)),
+                export_trigger: Arc::new(Mutex::new(false)),
             }
         }
         #[wasm_bindgen]
         pub fn trigger_save(&self) {
             if let Ok(mut flag) = self.save_trigger.lock() {
+                *flag = true;
+            }
+        }
+        #[wasm_bindgen]
+        pub fn trigger_export(&self) {
+            if let Ok(mut flag) = self.export_trigger.lock() {
                 *flag = true;
             }
         }
@@ -50,6 +58,7 @@ mod wasm {
             let state_clone = Arc::clone(&self.shared_json_state);
 
             let save_trigger_clone = Arc::clone(&self.save_trigger);
+            let export_trigger_clone = Arc::clone(&self.export_trigger);
 
             let update_json_clone = Arc::clone(&self.update_json);
             let update_read_only_clone = Arc::clone(&self.update_read_only);
@@ -66,7 +75,8 @@ mod wasm {
                             save_trigger_clone,
                             read_only,
                             update_json_clone,
-                            update_read_only_clone
+                            update_read_only_clone,
+                            export_trigger_clone,
                         )))
                     }),
                 )

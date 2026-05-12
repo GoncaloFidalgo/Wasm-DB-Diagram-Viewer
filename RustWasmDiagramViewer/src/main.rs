@@ -29,6 +29,7 @@ fn main() -> eframe::Result {
             false,
             Arc::new(Mutex::new(None)),
             Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(false)),
         )))),
     )
 }

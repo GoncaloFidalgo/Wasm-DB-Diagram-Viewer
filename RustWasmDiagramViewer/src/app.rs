@@ -10,7 +10,11 @@ use wasm_bindgen::prelude::*;
 extern "C" {
     #[wasm_bindgen(js_namespace = window)]
     fn saveDiagramState(json_data: &str);
+
+    #[wasm_bindgen(js_namespace = window)]
+    fn savePixelsAsPng(width: u32, height: u32, pixels: &[u8]);
 }
+
 // --- Estruturas ---
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -32,6 +36,10 @@ pub struct TemplateApp {
     pub update_read_only: Arc<Mutex<Option<bool>>>,
     #[serde(skip)]
     pub selected: Vec<Selected>,
+    #[serde(skip)]
+    pub export_trigger: Arc<Mutex<bool>>,
+    #[serde(skip)]
+    pub exporting: bool,
 }
 #[derive(PartialEq)]
 pub enum Selected {
@@ -143,6 +151,8 @@ impl Default for TemplateApp {
             read_only: true,
             update_json: Arc::new(Mutex::new(None)),
             update_read_only: Arc::new(Mutex::new(None)),
+            export_trigger: Arc::new(Mutex::new(false)),
+            exporting: false,
         }
     }
 }
@@ -562,6 +572,7 @@ impl TemplateApp {
         read_only: bool,
         update_json: Arc<Mutex<Option<String>>>,
         update_read_only: Arc<Mutex<Option<bool>>>,
+        export_trigger_clone: Arc<Mutex<bool>>,
     ) -> Self {
         let mut app: TemplateApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -574,10 +585,11 @@ impl TemplateApp {
                 Ok(mut app_state) => {
                     app_state.apply_auto_layout();
                     app_state.schema_loaded = true;
-                    app_state.save_trigger = save_trigger_clone;
+                    app_state.save_trigger = save_trigger_clone.clone();
                     app_state.read_only = read_only;
                     app_state.update_json = update_json.clone();
                     app_state.update_read_only = update_read_only.clone();
+                    app_state.export_trigger = export_trigger_clone.clone();
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -585,6 +597,8 @@ impl TemplateApp {
         }
 
         app.apply_auto_layout();
+        app.save_trigger = save_trigger_clone;
+        app.export_trigger = export_trigger_clone;
         app
     }
 
@@ -988,7 +1002,7 @@ impl eframe::App for TemplateApp {
                     new_app.save_trigger = self.save_trigger.clone();
                     new_app.update_json = self.update_json.clone();
                     new_app.update_read_only = self.update_read_only.clone();
-
+                    new_app.export_trigger = self.export_trigger.clone();
                     new_app.read_only = self.read_only;
                     new_app.apply_auto_layout();
 
@@ -1021,80 +1035,161 @@ impl eframe::App for TemplateApp {
                         Some(scene_transform) => scene_transform,
                         None => TSTransform::default(),
                     });
-            
+
             let (mut bg_response, painter) =
                 ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 
-            // Desativar scrolling fora do background e aplicar na scene
-            if !bg_response.hovered() {
-                ctx.input_mut(|i| {
-                    scene_transform.translation += i.smooth_scroll_delta;
-                    i.smooth_scroll_delta = Vec2::ZERO;
-                });
-            }
+            // --- 1. PREPARAR A FOTO: AUTO-FRAMING E SCREENSHOT ---
+            #[cfg(target_arch = "wasm32")]
+            if let Ok(mut flag) = self.export_trigger.lock() {
+                if *flag {
+                    *flag = false;
+                    self.exporting = true;
 
-            // Remover todos os objetos selecionados da lista
-            if bg_response.clicked() {
-                self.selected.clear();
-            }
+                    ui.ctx().data_mut(|d| d.insert_temp(Id::new("saved_transform"), scene_transform));
 
-            Scene::new()
-                .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
-                .zoom_range(Rangef::new(0.5, 2.0))
-                .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
+                    let mut min_x = f32::MAX;
+                    let mut min_y = f32::MAX;
+                    let mut max_x = f32::MIN;
+                    let mut max_y = f32::MIN;
 
-            Window::new("Inspector")
-                .order(Order::Tooltip)
-                .show(ctx, |ui| {
-                    if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
-                        *self = Default::default();
-                        ctx.memory_mut(|mem| *mem = Default::default());
+                    if self.tables.is_empty() {
+                        min_x = 0.0; min_y = 0.0; max_x = 800.0; max_y = 600.0;
+                    } else {
+                        for table in &self.tables {
+                            // Como table.pos é o CENTRO da tabela, tem de se calcular as margens
+                            let estimated_height = 8.0 + 32.0 /*HEADER_SIZE*/ + (table.columns.len() as f32 * 26.0 /*COL_SIZE*/);
+                            let estimated_width = 350.0; // Largura média para os cálculos
+
+                            let padding = 40.0; // margem de segurança
+
+                            // Descobrir as pontas verdadeiras do retângulo
+                            let left = table.pos.x - (estimated_width / 2.0) - padding;
+                            let right = table.pos.x + (estimated_width / 2.0) + padding;
+                            let top = table.pos.y - (estimated_height / 2.0) - padding;
+                            let bottom = table.pos.y + (estimated_height / 2.0) + padding;
+
+                            // Atualizar a Caixa global
+                            min_x = min_x.min(left);
+                            min_y = min_y.min(top);
+                            max_x = max_x.max(right);
+                            max_y = max_y.max(bottom);
+                        }
                     }
 
-                    if let Some(selected) = self.selected.last() {
-                        match selected {
-                            Selected::Table { table, column } => {
-                                match column {
-                                    None => {
-                                        ui.label("Tabela, descrição:");
-                                        ui.text_edit_multiline(&mut self.tables[*table].description);
+                    let diagram_width = (max_x - min_x).max(1.0);
+                    let diagram_height = (max_y - min_y).max(1.0);
+                    let screen_rect = ui.max_rect();
+
+                    // Escala (mantendo uma margem de 95% do ecrã)
+                    let scale_x = (screen_rect.width() * 0.95) / diagram_width;
+                    let scale_y = (screen_rect.height() * 0.95) / diagram_height;
+                    scene_transform.scaling = scale_x.min(scale_y);
+
+                    // Centra
+                    let center_x = (min_x + max_x) / 2.0;
+                    let center_y = (min_y + max_y) / 2.0;
+                    scene_transform.translation = vec2(
+                        screen_rect.center().x - center_x * scene_transform.scaling,
+                        screen_rect.center().y - center_y * scene_transform.scaling,
+                    );
+
+                    // Faz screenshot
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+                    ctx.request_repaint();
+                }
+            }
+
+            // --- 2. RECUPERAR DEPOIS DA FOTO E ENVIAR PARA JS ---
+            #[cfg(target_arch = "wasm32")]
+            if self.exporting {
+                //Mantém o motor acordado à espera do evento da foto
+                ctx.request_repaint();
+
+                for event in ctx.input(|i| i.events.clone()) {
+                    if let egui::Event::Screenshot { image, .. } = event {
+                        self.exporting = false;
+
+                        if let Some(saved) = ui.ctx().data_mut(|d| d.get_temp::<TSTransform>(Id::new("saved_transform"))) {
+                            scene_transform = saved;
+                        }
+
+                        let pixels_rgba: Vec<u8> = image.pixels.iter().flat_map(|color| color.to_array()).collect();
+                        savePixelsAsPng(image.size[0] as u32, image.size[1] as u32, &pixels_rgba);
+                    }
+                }
+            }
+            if !self.exporting {
+                // Desativar scrolling fora do background e aplicar na scene
+                if !bg_response.hovered() {
+                    ctx.input_mut(|i| {
+                        scene_transform.translation += i.smooth_scroll_delta;
+                        i.smooth_scroll_delta = Vec2::ZERO;
+                    });
+                }
+
+                // Remover todos os objetos selecionados da lista
+                if bg_response.clicked() {
+                    self.selected.clear();
+                }
+
+                // Colocar o background a controlar a Scene (PanAndDrag)
+                Scene::new()
+                    .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
+                    .zoom_range(Rangef::new(0.5, 2.0))
+                    .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
+
+                if self.read_only{
+                    Window::new("Inspector")
+                        .order(Order::Tooltip)
+                        .show(ctx, |ui| {
+                            if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
+                                *self = Default::default();
+                                ctx.memory_mut(|mem| *mem = Default::default());
+                            }
+
+                            if let Some(selected) = self.selected.last() {
+                                match selected {
+                                    Selected::Table { table, column } => {
+                                        match column {
+                                            None => {
+                                                ui.label("Tabela, descrição:");
+                                                ui.text_edit_multiline(&mut self.tables[*table].description);
+                                            },
+                                            Some(column_idx) => {
+                                                ui.label("Coluna, descrição:");
+                                                ui.text_edit_multiline(&mut self.tables[*table].columns[*column_idx].description);
+                                            }
+                                        }
                                     },
-                                    Some(column_idx) => {
-                                        ui.label("Coluna, descrição:");
-                                        ui.text_edit_multiline(&mut self.tables[*table].columns[*column_idx].description);
+                                    Selected::Relation { relation, .. } => {
+                                        ui.label("Relação, descrição:");
+                                        ui.text_edit_multiline(&mut self.relations[*relation].description);
                                     }
                                 }
-                            },
-                            Selected::Relation { relation, .. } => {
-                                ui.label("Relação, descrição:");
-                                ui.text_edit_multiline(&mut self.relations[*relation].description);
+                            } else {
+                                ui.label("Nenhum objeto selecionado.");
+                                ui.text_edit_multiline(&mut "");
                             }
+                        });
+                }
+
+                // Controlar zoom com uma barra lateral
+                Area::new(Id::new("DragValue_zoom"))
+                    .anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0))
+                    .order(Order::Foreground)
+                    .show(ctx, |ui|{
+                        let center_vec = bg_response.rect.center().to_vec2();
+                        let old_scale = scene_transform.scaling;
+
+                        ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
+                        if old_scale != scene_transform.scaling {
+                            let world_vec = (center_vec - scene_transform.translation) / old_scale;
+                            scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
                         }
-                    } else {
-                        ui.label("Nenhum objeto selecionado.");
-                        ui.text_edit_multiline(&mut "");
-                    }
-                });
+                    });
 
-            // Colocar o background a controlar a Scene (PanAndDrag)
-            Scene::new().drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
-                .zoom_range(Rangef::new(0.5, 2.0))
-                .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
-
-            // Controlar zoom com uma barra lateral
-            Area::new(Id::new("DragValue_zoom"))
-                .anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0))
-                .order(Order::Foreground)
-                .show(ctx, |ui|{
-                    let center_vec = bg_response.rect.center().to_vec2();
-                    let old_scale = scene_transform.scaling;
-
-                    ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
-                    if old_scale != scene_transform.scaling {
-                        let world_vec = (center_vec - scene_transform.translation) / old_scale;
-                        scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
-                    }
-                });
+            }
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
