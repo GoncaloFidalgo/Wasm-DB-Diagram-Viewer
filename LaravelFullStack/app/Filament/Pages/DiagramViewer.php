@@ -76,10 +76,11 @@ class DiagramViewer extends Page
 
         $this->isOwner = auth()->check() && auth()->id() === $diagram->user_id;
 
-        if ((!$diagram->is_published && !$this->isOwner) || $diagram->visibility == 'private') {
-            abort(403, 'Este diagrama é privado ou não existe.');
+        if (!$this->isOwner) {
+            if (!$diagram->is_published || $diagram->visibility === 'private') {
+                abort(403, 'Este diagrama é privado ou não existe.');
+            }
         }
-
         $this->recordId = $diagram->id;
         $this->selectedVersionId = $diagram->id;
         $this->diagramName = $diagram->name;
