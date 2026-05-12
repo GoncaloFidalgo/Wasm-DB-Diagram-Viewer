@@ -78,7 +78,7 @@ class DiagramViewer extends Page
 
         if (!$this->isOwner) {
             if (!$diagram->is_published || $diagram->visibility === 'private') {
-                abort(403, 'Este diagrama é privado ou não existe.');
+                abort(404, 'Este diagrama é privado ou não existe.');
             }
         }
         $this->recordId = $diagram->id;
