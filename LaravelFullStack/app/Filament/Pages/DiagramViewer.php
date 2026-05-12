@@ -6,6 +6,7 @@ use App\Filament\Actions\PublishDiagramAction;
 use App\Filament\Resources\Diagrams\DiagramResource;
 use App\Models\Diagram;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -215,24 +216,43 @@ class DiagramViewer extends Page
 
                                     ])->columnSpan(3),
 
+
+
                                 Actions::make([
 
+                                    // 1. DROPDOWN DE EXPORTAÇÃO
+                                    ActionGroup::make([
+                                        Action::make('export_png')
+                                            ->label('Exportar como PNG')
+                                            ->icon('heroicon-m-photo')
+                                            ->action(fn() => $this->dispatch('trigger-export-png')), // Dispara evento para o JS
+
+                                        // Espaço reservado para o futuro!
+                                        // Action::make('export_sql')
+                                        //     ->label('Exportar SQL')
+                                        //     ->icon('heroicon-m-circle-stack')
+                                        //     ->action(fn() => $this->dispatch('trigger-export-sql')),
+                                    ])
+                                        ->label('Exportar')
+                                        ->icon('heroicon-m-arrow-down-tray')
+                                        ->color('gray')
+                                        ->button(), // Transforma o ícone num botão com fundo e texto
+
+                                    // 2. BOTÃO GRAVAR
                                     Action::make('save')
                                         ->label('Gravar')
                                         ->icon('heroicon-m-document-check')
                                         ->color('primary')
-                                        ->action(fn() => $this->dispatch('trigger-rust-save')),
+                                        ->action(fn() => $this->dispatch('trigger-rust-save'))
+                                        ->visible(fn() => !$this->isPublished),
+
+                                    // 3. BOTÃO PUBLICAR (Importado do nosso ficheiro)
+                                    PublishDiagramAction::make()
+                                        ->visible(fn() => $this->isOwner),
 
                                 ])
-                                    ->visible(fn() => !$this->isPublished)
-                                    ->alignEnd()
-                                    ->columnStart(4),
-                                Actions::make([
-                                    PublishDiagramAction::make()
-                                ])
-                                    ->visible(fn() => $this->isOwner)
-                                    ->alignEnd()
-                                    ->columnStart(5),
+                                    ->alignEnd() // Encosta os 3 botões à direita
+                                    ->columnStart(4), // Ficam todos arrumadinhos na última coluna do Grid(4)
                             ]),
 
                     ]),
