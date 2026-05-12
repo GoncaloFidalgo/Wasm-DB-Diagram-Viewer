@@ -66,6 +66,8 @@
 
     $jsVersion = file_exists($jsPath) ? filemtime($jsPath) : time();
     $wasmVersion = file_exists($wasmPath) ? filemtime($wasmPath) : time();
+
+
 @endphp
 <script type="module">
     window.wasmHandle = null;
@@ -135,81 +137,7 @@
             if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
         }
     });
-    // window.savePixelsAsPng = function(width, height, pixelsArray) {
-    //     if (!pixelsArray || pixelsArray.length === 0) return;
-    //
-    //     // 1. Cria a imagem original (Gigante)
-    //     const originalCanvas = document.createElement('canvas');
-    //     originalCanvas.width = width;
-    //     originalCanvas.height = height;
-    //     const ctx = originalCanvas.getContext('2d');
-    //
-    //     const clampedArray = new Uint8ClampedArray(pixelsArray.buffer, pixelsArray.byteOffset, pixelsArray.length);
-    //     const imageData = new ImageData(clampedArray, width, height);
-    //     ctx.putImageData(imageData, 0, 0);
-    //
-    //     // 2. AUTO-CROP MÁGICO: Procura onde estão as tabelas através da transparência!
-    //     let minX = width, minY = height, maxX = 0, maxY = 0;
-    //     const data = imageData.data;
-    //
-    //     for (let y = 0; y < height; y++) {
-    //         for (let x = 0; x < width; x++) {
-    //             // O índice 3 é o canal Alpha (Transparência)
-    //             const alpha = data[(y * width + x) * 4 + 3];
-    //             if (alpha > 5) { // Se o pixel não for transparente, regista o limite
-    //                 if (x < minX) minX = x;
-    //                 if (x > maxX) maxX = x;
-    //                 if (y < minY) minY = y;
-    //                 if (y > maxY) maxY = y;
-    //             }
-    //         }
-    //     }
-    //
-    //     // Se o canvas estiver todo vazio (algo falhou), evita erros na matemática
-    //     if (minX > maxX) {
-    //         minX = 0; minY = 0; maxX = width; maxY = height;
-    //     }
-    //
-    //     // Dá uma margem de segurança de 30px à volta do diagrama para ficar bonito
-    //     const padding = 30;
-    //     minX = Math.max(0, minX - padding);
-    //     minY = Math.max(0, minY - padding);
-    //     maxX = Math.min(width, maxX + padding);
-    //     maxY = Math.min(height, maxY + padding);
-    //
-    //     const cropWidth = maxX - minX;
-    //     const cropHeight = maxY - minY;
-    //
-    //     // 3. Cria o Canvas Final Recortado
-    //     const croppedCanvas = document.createElement('canvas');
-    //     croppedCanvas.width = cropWidth;
-    //     croppedCanvas.height = cropHeight;
-    //     const croppedCtx = croppedCanvas.getContext('2d');
-    //
-    //     // Recorta da original e cola na nova!
-    //     croppedCtx.drawImage(originalCanvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-    //
-    //     // 4. Download à prova de falhas HTTP/HTTPS
-    //     try {
-    //         croppedCanvas.toBlob(function(blob) {
-    //             const url = URL.createObjectURL(blob);
-    //             const link = document.createElement('a');
-    //             link.download = 'diagrama.png';
-    //             link.href = url;
-    //             document.body.appendChild(link);
-    //             link.click();
-    //             document.body.removeChild(link);
-    //             setTimeout(() => URL.revokeObjectURL(url), 150);
-    //         }, 'image/png');
-    //     } catch (e) {
-    //         const link = document.createElement('a');
-    //         link.download = 'diagrama.png';
-    //         link.href = croppedCanvas.toDataURL('image/png');
-    //         document.body.appendChild(link);
-    //         link.click();
-    //         document.body.removeChild(link);
-    //     }
-    // };
+
     window.savePixelsAsPng = function(width, height, pixelsArray) {
         if (!pixelsArray || pixelsArray.length === 0) {
             console.error("Erro: O Rust enviou um array de pixels vazio.");
@@ -231,7 +159,7 @@
             canvas.toBlob(function(blob) {
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
-                link.download = 'o_meu_diagrama.png';
+                link.download = '{{ $this->diagramName }}.png';
                 link.href = url;
                 document.body.appendChild(link); // Necessário no Firefox
                 link.click();
@@ -240,9 +168,9 @@
             }, 'image/png');
         } catch (e) {
             console.warn("Blob bloqueado por falta de HTTPS. A usar DataURL de segurança...");
-            // Fallback à prova de bala (Ignora o bloqueio de segurança)
+            // Ignora o bloqueio de segurança
             const link = document.createElement('a');
-            link.download = 'o_meu_diagrama.png';
+            link.download = '{{ $this->diagramName }}.png';
             link.href = canvas.toDataURL('image/png');
             document.body.appendChild(link);
             link.click();
