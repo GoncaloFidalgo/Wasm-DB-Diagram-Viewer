@@ -19,7 +19,7 @@ class PublicDiagrams extends Page implements HasTable
     protected static ?string $navigationLabel = 'Diagramas Públicos';
     protected static ?string $title = 'Explorar Diagramas Públicos';
     protected static ?string $slug = 'explorar-diagramas';
-
+    protected static ?int $navigationSort = 2;
     protected string $view = 'filament.pages.public-diagrams';
 
     public function table(Table $table): Table
