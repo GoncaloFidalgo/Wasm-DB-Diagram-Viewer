@@ -1139,7 +1139,7 @@ impl eframe::App for TemplateApp {
                     .zoom_range(Rangef::new(0.5, 2.0))
                     .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
-                if self.read_only{
+                if !self.read_only{
                     Window::new("Inspector")
                         .order(Order::Tooltip)
                         .show(ctx, |ui| {
