@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Actions\PublishDiagramAction;
 use App\Filament\Resources\Diagrams\DiagramResource;
 use App\Models\Diagram;
 use Filament\Actions\Action;
@@ -74,7 +75,7 @@ class DiagramViewer extends Page
         $this->recordId = $diagram->id;
         $this->selectedVersionId = $diagram->id;
         $this->diagramName = $diagram->name;
-        $this->isPublished = (bool) $diagram->is_published;
+        $this->isPublished = (bool)$diagram->is_published;
         $this->schemaJson = json_encode($diagram->diagram);
     }
 
@@ -143,7 +144,7 @@ class DiagramViewer extends Page
 
                                                 $livewire->recordId = $diagram->id;
                                                 $livewire->diagramName = $diagram->name;
-                                                $livewire->isPublished = (bool) $diagram->is_published;
+                                                $livewire->isPublished = (bool)$diagram->is_published;
                                                 $livewire->schemaJson = json_encode($diagram->diagram);
 
                                                 // Dispara um evento para o browser apanhar e atualizar o Canvas Rust
@@ -188,66 +189,39 @@ class DiagramViewer extends Page
                                                         return false;
                                                     }
 
-                                                    // Verifica se já existe algum rascunho ativo para este diagrama UUID
+                                                    // Verifica se já existe alguma versao ativo para este diagrama UUID
                                                     $hasDraft = Diagram::where('diagram_id', $this->diagramId)
                                                         ->where('is_published', false)
                                                         ->exists();
 
-                                                    // Só mostra o botão se não houver rascunhos!
+                                                    // Só mostra o botão se não houver versoes
                                                     return !$hasDraft;
                                                 }),
                                         ])->columnSpan(2),
 
 
-                            ])->columnSpan(3),
+                                    ])->columnSpan(3),
 
-                        Actions::make([
-                            Action::make('publish')
-                                ->label('Publicar')
-                                ->icon('heroicon-m-share')
-                                ->color('gray')
-                                ->modalHeading('Publicar Diagrama')
-                                ->modalDescription('Define quem pode visualizar este diagrama.')
-                                ->modalSubmitActionLabel('Publicar')
-                                ->modalCancelActionLabel('Cancelar')
-                                ->modalWidth('md')
-                                ->schema([
-                                    Radio::make('visibility')
-                                        ->label('Visibilidade')
-                                        ->options([
-                                            'public' => 'Público',
-                                            'link' => 'Apenas com o link',
-                                        ])
-                                        ->descriptions([
-                                            'public' => 'Qualquer utilizador pode visualizar este diagrama.',
-                                            'link' => 'Apenas utilizadores com o link podem visualizar este diagrama.',
-                                        ])
-                                        ->default(fn() => Diagram::where('id', $this->recordId)->value('visibility') ?? 'link')
-                                        ->required(),
+                                Actions::make([
+
+                                    Action::make('save')
+                                        ->label('Gravar')
+                                        ->icon('heroicon-m-document-check')
+                                        ->color('primary')
+                                        ->action(fn() => $this->dispatch('trigger-rust-save')),
+
                                 ])
-                                ->action(function (array $data) {
-                                    Diagram::where('id', $this->recordId)->update([
-                                        'visibility' => $data['visibility'],
-                                        'is_published' => true,
-                                    ]);
-
-                                    return redirect(request()->header('Referer'));
-                                }),
-
-                            Action::make('save')
-                                ->label('Gravar')
-                                ->icon('heroicon-m-document-check')
-                                ->color('primary')
-                                ->action(fn() => $this->dispatch('trigger-rust-save')),
-
-                        ])
-                            ->visible(fn() => !$this->isPublished)
-                            ->alignEnd()
-                            ->columnStart(5),
+                                    ->visible(fn() => !$this->isPublished)
+                                    ->alignEnd()
+                                    ->columnStart(4),
+                                Actions::make([
+                                    PublishDiagramAction::make()
+                                ])
+                                    ->alignEnd()
+                                    ->columnStart(5),
+                            ]),
 
                     ]),
-
-            ]),
 
                 View::make('filament.resources.diagrams.pages.canvas'),
 

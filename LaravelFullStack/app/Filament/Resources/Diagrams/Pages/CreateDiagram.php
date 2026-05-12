@@ -138,7 +138,7 @@ class CreateDiagram extends Page
 
             $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
             $absolutePath = '';
-            
+
             if ($fileItem instanceof TemporaryUploadedFile) {
                 $absolutePath = $fileItem->getRealPath();
             }

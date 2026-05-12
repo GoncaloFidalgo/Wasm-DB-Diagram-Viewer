@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Diagrams\Tables;
 
+use App\Filament\Actions\PublishDiagramAction;
 use App\Models\Diagram;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -44,6 +45,7 @@ class DiagramsTable
             ])
             ->recordActions([
                 ActionGroup::make([
+                    PublishDiagramAction::make(),
                     Action::make('delete_all')
                         ->label('Eliminar')
                         ->icon('heroicon-m-trash')
