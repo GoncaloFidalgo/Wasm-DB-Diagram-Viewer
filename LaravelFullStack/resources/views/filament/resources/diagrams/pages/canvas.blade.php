@@ -81,8 +81,9 @@
             // Força o download do novo ficheiro JS
             const wasm = await import('/wasm/rust_wasm_diagram_viewer.js?v={{ $jsVersion }}');
             // Passa o caminho explícito do WASM com a versão para o inicializador
-            await wasm.default('/wasm/rust_wasm_diagram_viewer_bg.wasm?v={{ $wasmVersion }}');
-
+            await wasm.default({
+                module_or_path: '/wasm/rust_wasm_diagram_viewer_bg.wasm?v={{ $wasmVersion }}'
+            });
             window.wasmHandle = new wasm.WebHandle();
             window.wasmHandle.load_data(canvas.dataset.schema);
 
