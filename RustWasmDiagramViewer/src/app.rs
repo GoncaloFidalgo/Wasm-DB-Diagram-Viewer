@@ -148,7 +148,7 @@ impl Default for TemplateApp {
             schema_loaded: false,
             selected: Vec::new(),
             save_trigger: Arc::new(Mutex::new(false)),
-            read_only: true,
+            read_only: false,
             update_json: Arc::new(Mutex::new(None)),
             update_read_only: Arc::new(Mutex::new(None)),
             export_trigger: Arc::new(Mutex::new(false)),
@@ -773,21 +773,9 @@ impl TemplateApp {
                 }
             }
             let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
-            Popup::menu(&rel_first_response).id(popup_first_id).show(|ui| {
-                if !self.read_only && ui.button("⟳ Reset").clicked() {
-                    relation.relation_segments.clear();
-                    self.selected.clear();
-                }
-                popup_description(ui, &relation.description);
-            });
+            popup_relation_create(&rel_first_response, popup_first_id, relation, self.read_only, &mut self.selected);
             let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
-            Popup::menu(&rel_second_response).id(popup_second_id).show(|ui| {
-                if !self.read_only && ui.button("⟳ Reset").clicked() {
-                    relation.relation_segments.clear();
-                    self.selected.clear();
-                }
-                popup_description(ui, &relation.description);
-            });
+            popup_relation_create(&rel_second_response, popup_second_id, relation, self.read_only, &mut self.selected);
 
             // Segmentos
             for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
@@ -805,13 +793,7 @@ impl TemplateApp {
 
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
-                Popup::menu(&seg_response).id(popup_id).show(|ui| {
-                    if !self.read_only && ui.button("⟳ Reset").clicked() {
-                        relation.relation_segments.clear();
-                        self.selected.clear();
-                    }
-                    popup_description(ui, &relation.description);
-                });
+                popup_relation_create(&seg_response, popup_id, relation, self.read_only, &mut self.selected);
 
                 if !self.read_only {
                     if seg_response.clicked() {
@@ -919,11 +901,7 @@ impl TemplateApp {
                         let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
                         let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
 
-                        Popup::menu(&pt_response).id(pt_popup_id).show(|ui| {
-                            if ui.button("⟳").clicked() {
-                                relation.relation_segments.clear();
-                            }
-                        });
+                        popup_relation_create(&pt_response, pt_popup_id, relation, self.read_only, &mut self.selected);
 
                         if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
                             let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
@@ -959,16 +937,36 @@ impl TemplateApp {
         }
 
         for relation_segment in relation_segments_to_change.iter() {
+            let relation = &mut self.relations[relation_segment[0]];
+            let relation_size = relation.relation_segments.len();
             if relation_segment[1] == 1 {
-                for (segment_idx, segment) in self.relations[relation_segment[0]].relation_segments.iter_mut().enumerate() {
+                if relation_size == 0 {
+                    let first_table_idx = relation.tables[0];
+                    let last_table_idx = relation.tables[1];
+                    let x_mid = (self.tables[first_table_idx].pos.x + self.tables[last_table_idx].pos.x)/2.0;
+                    relation.relation_segments.push(x_mid);
+                }
+                for (segment_idx, segment) in relation.relation_segments.iter_mut().enumerate() {
                     if segment_idx == relation_segment[2] {continue;}
                     *segment += if segment_idx % 2 == 0 {delta_used.x} else {delta_used.y};
                 }
             } else {
-                self.relations[relation_segment[0]].relation_segments[relation_segment[2]] += if relation_segment[2] % 2 == 0 {delta_used.x} else {delta_used.y};
+                if relation_size > relation_segment[2] {
+                    relation.relation_segments[relation_segment[2]] += if relation_segment[2] % 2 == 0 {delta_used.x} else {delta_used.y};
+                }
             }
         }
     }
+}
+
+fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, read_only: bool, selected: &mut Vec<Selected>) {
+    Popup::menu(seg_response).id(popup_id).show(|ui| {
+        if !read_only && ui.button("⟳ Reset").clicked() {
+            relation.relation_segments.clear();
+            selected.clear();
+        }
+        popup_description(ui, &relation.description);
+    });
 }
 
 impl eframe::App for TemplateApp {
@@ -1139,7 +1137,7 @@ impl eframe::App for TemplateApp {
                     .zoom_range(Rangef::new(0.5, 2.0))
                     .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
-                if !self.read_only{
+                if !self.read_only {
                     Window::new("Inspector")
                         .order(Order::Tooltip)
                         .show(ctx, |ui| {
