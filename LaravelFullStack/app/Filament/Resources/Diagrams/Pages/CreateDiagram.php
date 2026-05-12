@@ -12,6 +12,7 @@ use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class CreateDiagram extends Page
 {
@@ -74,11 +75,26 @@ class CreateDiagram extends Page
             $tablesData = [];
 
             if ($state['engine'] === 'sqlite') {
-                $filePath = $state['filePath'] ?? null;
-                if (!$filePath) throw new \Exception('Ficheiro SQLite não encontrado.');
+                $filePathData = $state['filePath'] ?? null;
+                if (!$filePathData) throw new \Exception('Ficheiro SQLite não encontrado.');
 
-                $relativePath = is_array($filePath) ? array_values($filePath)[0] : $filePath;
-                $absolutePath = Storage::disk('local')->path($relativePath);
+                $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
+                $absolutePath = '';
+
+                if ($fileItem instanceof TemporaryUploadedFile) {
+                    $absolutePath = $fileItem->getRealPath();
+                }
+                elseif (is_string($fileItem)) {
+                    if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
+                        $absolutePath = $fileItem;
+                    } else {
+                        $absolutePath = Storage::disk('local')->path($fileItem);
+                    }
+                }
+
+                if (!file_exists($absolutePath)) {
+                    throw new \Exception("Ficheiro não encontrado no disco: " . $absolutePath);
+                }
 
                 $tablesData = $extractor->extractTables($absolutePath, 'sqlite');
             } else {
@@ -95,15 +111,20 @@ class CreateDiagram extends Page
             ]);
 
             Notification::make()->title('Extração Concluída')->success()->send();
+
         } catch (\Exception $e) {
-            Notification::make()->title('Erro ao extrair')->body($e->getMessage())->danger()->send();
+            //$e->getMessage()
+            Notification::make()
+                ->title('Erro ao extrair tabelas')
+                ->body()
+                ->danger()
+                ->send();
         }
     }
 
     public function openDiagram()
     {
         $detailsState = $this->detailsForm->getState();
-
         $connState = $this->connectionForm->getState();
 
         $selectedTables = $detailsState['selectedTables'];
@@ -112,9 +133,26 @@ class CreateDiagram extends Page
         $finalJsonSchema = '';
 
         if ($connState['engine'] === 'sqlite') {
-            $filePath = $connState['filePath'] ?? null;
-            $relativePath = is_array($filePath) ? array_values($filePath)[0] : $filePath;
-            $absolutePath = Storage::disk('local')->path($relativePath);
+            $filePathData = $connState['filePath'] ?? null;
+            if (!$filePathData) throw new \Exception('Ficheiro SQLite não encontrado.');
+
+            $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
+            $absolutePath = '';
+            
+            if ($fileItem instanceof TemporaryUploadedFile) {
+                $absolutePath = $fileItem->getRealPath();
+            }
+            elseif (is_string($fileItem)) {
+                if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
+                    $absolutePath = $fileItem;
+                } else {
+                    $absolutePath = Storage::disk('local')->path($fileItem);
+                }
+            }
+
+            if (!file_exists($absolutePath)) {
+                throw new \Exception("Ficheiro não encontrado no disco: " . $absolutePath);
+            }
 
             $finalJsonSchema = $extractor->buildDiagramSchema($absolutePath, $selectedTables, 'sqlite');
         } else {

@@ -37,14 +37,17 @@ class ListDiagrams extends ListRecords
                         });
                 }),
 
-            'Todos' => Tab::make()
+            'Públicos' => Tab::make()
                 ->modifyQueryUsing(function (Builder $query) {
-                    // Filtra para manter apenas a última versão de CADA diagrama na base de dados global
-                    $query->where('version', function ($subquery) {
-                        $subquery->select(DB::raw('MAX(version)'))
-                            ->from('diagrams as d2')
-                            ->whereColumn('d2.diagram_id', 'diagrams.diagram_id');
-                    });
+                    $query->where('is_published', true)
+                        ->where('visibility', 'public')
+                        ->where('version', function ($subquery) {
+                            $subquery->select(DB::raw('MAX(version)'))
+                                ->from('diagrams as d2')
+                                ->whereColumn('d2.diagram_id', 'diagrams.diagram_id')
+                                ->where('d2.is_published', true)
+                                ->where('d2.visibility', 'public');
+                        });
                 }),
         ];
     }

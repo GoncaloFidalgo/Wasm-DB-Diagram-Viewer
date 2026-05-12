@@ -160,6 +160,7 @@ class DiagramViewer extends Page
                                                 ->icon('heroicon-m-document-plus')
                                                 ->color('primary')
                                                 ->action(function () {
+                                                    $maxVersion = Diagram::where('diagram_id', $this->diagramId)->max('version');
                                                     $latest = Diagram::where('id', $this->recordId)->first();
 
                                                     Diagram::create([
@@ -168,7 +169,7 @@ class DiagramViewer extends Page
                                                         'description' => $latest->description,
                                                         'diagram' => $latest->diagram,
                                                         'user_id' => $latest->user_id,
-                                                        'version' => $latest->version + 1,
+                                                        'version' => $maxVersion + 1,
                                                         'visibility' => 'link',
                                                         'is_published' => false,
                                                     ]);
@@ -181,7 +182,20 @@ class DiagramViewer extends Page
 
                                                     return redirect(request()->header('Referer'));
                                                 })
-                                                ->visible(fn() => $this->isPublished && $this->isOwner),
+                                                ->visible(function () {
+                                                    // 1. Se não for o dono ou a versão atual não estiver publicada, esconde.
+                                                    if (!$this->isOwner || !$this->isPublished) {
+                                                        return false;
+                                                    }
+
+                                                    // Verifica se já existe algum rascunho ativo para este diagrama UUID
+                                                    $hasDraft = Diagram::where('diagram_id', $this->diagramId)
+                                                        ->where('is_published', false)
+                                                        ->exists();
+
+                                                    // Só mostra o botão se não houver rascunhos!
+                                                    return !$hasDraft;
+                                                }),
                                         ])->columnSpan(2),
 
 
