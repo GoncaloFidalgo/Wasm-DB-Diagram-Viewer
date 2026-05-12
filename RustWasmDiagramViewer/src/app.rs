@@ -629,6 +629,20 @@ impl TemplateApp {
         let notation_size: f32 = 8.0 * scene_transform.scaling;
         let interact_hitbox_size: f32 = 14.0 * scene_transform.scaling;
 
+        struct RelationToDraw {
+            pts: Vec<Pos2>,
+            line_stroke: Stroke,
+            table_proximity_limit: f32,
+            notation_size: f32,
+            start_dir: f32,
+            end_dir: f32,
+            last_idx: usize,
+            unique: bool,
+            nullable: bool
+        }
+        let mut relations_to_draw: Vec<RelationToDraw> = Vec::new();
+        let mut relation_segments_to_draw: Vec<Rect> = Vec::new();
+
         let mut relation_segments_to_change: Vec<[usize; 3]> = Vec::new();//relationID/fullRelationBinary/segmentID
         let mut delta_used = Vec2::ZERO;
 
@@ -708,18 +722,6 @@ impl TemplateApp {
                 pts[2].x = new_start_x;
             }
 
-            if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
-                // Desenhar a notação One
-                let crow_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, notation_size);
-                let down_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, - notation_size);
-                painter.line_segment([crow_up_base, down_up_base], line_stroke);
-            } else {
-                // Desenhar a notação Many
-                let crow_base = pts[0] + vec2(start_dir * table_proximity_limit / 1.5, 0.0);
-                painter.line_segment([crow_base, pts[0] + vec2(0.0, notation_size)], line_stroke);
-                painter.line_segment([crow_base, pts[0] + vec2(0.0, - notation_size)], line_stroke);
-            }
-
             // --- Segunda Tabela PK --
             let end_goes_left = if enough_space {pts[last_idx].x} else {x_align} > pts[last_idx-1].x;
             let end_dir = if end_goes_left { -1.0 } else { 1.0 };
@@ -735,23 +737,15 @@ impl TemplateApp {
                 pts[last_idx - 2].x = new_end_x;
             }
 
-            if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
-                // Desenhar a notação Zero
-                let crow_base_start = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 - notation_size/2.0), 0.0);
-                let crow_base_end = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 + notation_size/2.0), 0.0);
-                painter.line_segment([pts[last_idx], crow_base_start], line_stroke);
-                painter.line_segment([crow_base_end, pts[last_idx-1] + vec2(end_dir * line_width/2.0, 0.0)], line_stroke);
-                painter.circle_stroke(pts[last_idx] + vec2(end_dir * table_proximity_limit / 2.0, 0.0), notation_size/2.0, line_stroke);
+            if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                relations_to_draw.push(RelationToDraw {pts: pts.clone(), line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx,
+                    unique: self.tables[relation.tables[0]].columns[relation.columns[0]].unique,
+                    nullable: self.tables[relation.tables[0]].columns[relation.columns[0]].nullable});
             } else {
-                // Desenhar a notação One
-                painter.line_segment([pts[last_idx], pts[last_idx-1] + vec2(end_dir * line_width/2.0, 0.0)], line_stroke);
-                let crow_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, notation_size);
-                let down_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, - notation_size);
-                painter.line_segment([crow_up_base, down_up_base], line_stroke);
+                draw_visual_relation(painter, &pts, line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx,
+                    self.tables[relation.tables[0]].columns[relation.columns[0]].unique,
+                    self.tables[relation.tables[0]].columns[relation.columns[0]].nullable);
             }
-
-            // Desenhar a linha completa
-            if !front_line {painter.line(pts[0..last_idx].to_vec(), line_stroke);}
 
             let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
@@ -840,7 +834,7 @@ impl TemplateApp {
                     }
 
                     if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) || self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                        painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
+                        relation_segments_to_draw.push(visual_rect);
                     } else if seg_response.hovered() {
                         painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
                     }
@@ -936,6 +930,13 @@ impl TemplateApp {
             }
         }
 
+        for relation_to_draw in relations_to_draw.iter() {
+            draw_visual_relation(painter, &relation_to_draw.pts, relation_to_draw.line_stroke, relation_to_draw.table_proximity_limit, relation_to_draw.notation_size, relation_to_draw.start_dir, relation_to_draw.end_dir, relation_to_draw.last_idx, relation_to_draw.unique, relation_to_draw.nullable);
+        }
+        for segment_to_draw_rect in relation_segments_to_draw {
+            painter.rect_filled(segment_to_draw_rect, CornerRadius::ZERO, Color32::BLUE);
+        }
+
         for relation_segment in relation_segments_to_change.iter() {
             let relation = &mut self.relations[relation_segment[0]];
             let relation_size = relation.relation_segments.len();
@@ -957,6 +958,40 @@ impl TemplateApp {
             }
         }
     }
+}
+
+fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool) {
+    let mut pts = pts.clone();
+    if unique {
+        // Desenhar a notação One
+        let crow_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, notation_size);
+        let down_up_base = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, - notation_size);
+        painter.line_segment([crow_up_base, down_up_base], line_stroke);
+    } else {
+        // Desenhar a notação Many
+        let crow_base = pts[0] + vec2(start_dir * table_proximity_limit / 1.5, 0.0);
+        painter.line_segment([crow_base, pts[0] + vec2(0.0, notation_size)], line_stroke);
+        painter.line_segment([crow_base, pts[0] + vec2(0.0, - notation_size)], line_stroke);
+    }
+
+    if nullable {
+        // Desenhar a notação Zero
+        let crow_base_start = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 - notation_size/2.0), 0.0);
+        let crow_base_end = pts[last_idx] + vec2(end_dir * (table_proximity_limit / 2.0 + notation_size/2.0), 0.0);
+        painter.line_segment([pts[last_idx], crow_base_start], line_stroke);
+        painter.circle_stroke(pts[last_idx] + vec2(end_dir * table_proximity_limit / 2.0, 0.0), notation_size/2.0, line_stroke);
+        // Fazer o ultimo ponto passar a ser depois do circulo
+        pts.pop();
+        pts.push(crow_base_end);
+    } else {
+        // Desenhar a notação One
+        let crow_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, notation_size);
+        let down_up_base = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, - notation_size);
+        painter.line_segment([crow_up_base, down_up_base], line_stroke);
+    }
+
+    // Desenhar a linha completa
+    painter.line(pts, line_stroke);
 }
 
 fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, read_only: bool, selected: &mut Vec<Selected>) {
