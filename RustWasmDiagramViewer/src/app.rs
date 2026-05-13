@@ -811,20 +811,7 @@ impl TemplateApp {
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
             if !self.read_only && (rel_first_response.clicked() || rel_second_response.clicked()) {
                 if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-
-                let item = Selected::Relation { relation: rela_idx, segment: None };
-                if self.selected.contains(&item) {
-                    self.selected.retain(|s| s != &item);
-                } else {
-                    self.selected.retain(|s| {
-                        !matches!(s,
-                            Selected::Relation { relation, segment: Some(_) }
-                            if *relation == rela_idx
-                        )
-                    });
-
-                    self.selected.push(item);
-                }
+                toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len());
             }
             let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
             popup_relation_create(&rel_first_response, popup_first_id, relation, self.read_only, &mut self.selected);
