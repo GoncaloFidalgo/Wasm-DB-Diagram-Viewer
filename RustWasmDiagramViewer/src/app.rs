@@ -46,6 +46,66 @@ pub enum Selected {
     Table { table: usize, column: Option<usize> },
     Relation { relation: usize, segment: Option<usize> },
 }
+fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize) {
+    match item {
+        Selected::Relation { relation, segment } => {
+            let rela_idx = relation;
+            match segment {
+                None => {
+                    if selected.contains(&item) {
+                        selected.retain(|s| s != &item);
+                    } else {
+                        selected.retain(|s| {
+                            !matches!(s,
+                                Selected::Relation { relation, segment: Some(_) }
+                                if *relation == rela_idx
+                            )
+                        });
+
+                        selected.push(item);
+                    }
+                },
+                Some(seg_idx) => {
+                    if selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+                        selected.retain(|s| !(s == &Selected::Relation { relation: rela_idx, segment: None }));
+                        if rela_len == 0 {selected.push(Selected::Relation { relation: rela_idx, segment: Some(seg_idx) });} else {
+                            for selected_segment_idx in 0..rela_len {
+                                selected.push(Selected::Relation { relation: rela_idx, segment: Some(selected_segment_idx) });
+                            }
+                        }
+                    }
+
+                    if selected.contains(&item) {
+                        selected.retain(|s| s != &item);
+                    } else {
+                        selected.push(item);
+                    }
+
+                    let selected_segments = selected.iter().filter(|s| {
+                        matches!(s,
+                            Selected::Relation { relation, segment: Some(_) }
+                            if *relation == rela_idx
+                        )
+                    }).count();
+
+                    if selected_segments >= 1 && selected_segments >= rela_len {
+                        selected.retain(|s| {
+                            !matches!(s,
+                                Selected::Relation { relation, segment: Some(_) }
+                                if *relation == rela_idx
+                            )
+                        });
+
+                        selected.push(Selected::Relation { relation: rela_idx, segment: None });
+                    }
+                }
+            }
+        },
+        Selected::Table { table, column } => {
+
+        }
+    }
+}
 
 impl Default for TemplateApp {
     fn default() -> Self {
@@ -792,44 +852,13 @@ impl TemplateApp {
                 if !self.read_only {
                     if seg_response.clicked() {
                         if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-
-                        if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                            self.selected.retain(|s| {
-                                !matches!(s,
-                                Selected::Relation { relation, segment: None }
-                                if *relation == rela_idx
-                            )
-                            });
-                            if auto_align { self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }); } else {
-                                for (selected_segment_idx, _) in relation.relation_segments.iter().enumerate() {
-                                    self.selected.push(Selected::Relation { relation: rela_idx, segment: Some(selected_segment_idx) });
-                                }
-                            }
-                        }
-
+                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
+                    }
+                    if seg_response.drag_started() {
+                        if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
                         let item = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
-                        if self.selected.contains(&item) {
-                            self.selected.retain(|s| s != &item);
-                        } else {
-                            self.selected.push(item);
-                        }
-
-                        let selected_segments = self.selected.iter().filter(|s| {
-                            matches!(s,
-                            Selected::Relation { relation, segment: Some(_) }
-                            if *relation == rela_idx
-                        )
-                        }).count();
-
-                        if selected_segments == last_idx-2 {
-                            self.selected.retain(|s| {
-                                !matches!(s,
-                                Selected::Relation { relation, segment: Some(_) }
-                                if *relation == rela_idx
-                            )
-                            });
-
-                            self.selected.push(Selected::Relation { relation: rela_idx, segment: None });
+                        if !self.selected.contains(&item) {
+                            toggle_selected(&mut self.selected, item, relation.relation_segments.len());
                         }
                     }
 
@@ -877,6 +906,7 @@ impl TemplateApp {
 
                     // --- Dividir linha ---
                     if seg_response.secondary_clicked() {
+                        self.selected.clear();
                         let mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
                         let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
                         relation.relation_segments.insert(seg_idx + 1, mid);
@@ -908,6 +938,7 @@ impl TemplateApp {
                             painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
 
                             if pt_response.dragged() {
+                                self.selected.clear();
                                 let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
                                 let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
 
@@ -917,6 +948,7 @@ impl TemplateApp {
                         }
 
                         if pt_response.secondary_clicked() {
+                            self.selected.clear();
                             relation.relation_segments.remove(seg_idx);
                             relation.relation_segments.remove(seg_idx - 1);
                         }
