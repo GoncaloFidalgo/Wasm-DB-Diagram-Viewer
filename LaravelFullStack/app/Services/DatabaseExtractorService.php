@@ -175,45 +175,38 @@ class DatabaseExtractorService
 
     private function fetchTables(): array
     {
-        //$schemas = Schema::connection('dynamic_extract')->getSchemas();
         $tables = Schema::connection('dynamic_extract')->getTables();
         $driver = DB::connection('dynamic_extract')->getDriverName();
 
-        //$schemas = Schema::getSchemas();
-        //$tables = Schema::getTables();
-        //$driver = DB::getDriverName();
-
-        $filteredTables = array_filter($tables, function ($table) use ($driver) {
-            // PostgreSQL separa as tabelas em schemas (auth, storage, public).
-            // Usar apenas o public
-            if ($driver === 'pgsql' && isset($table['schema'])) {
-                if ($table['schema'] !== 'public') {
-                    return false;
-                }
+        return array_map(function ($table) use ($driver) {
+            // No PostgreSQL, se a tabela não for do public, prefixamos com o schema (ex: auth.users)
+            if ($driver === 'pgsql' && isset($table['schema']) && $table['schema'] !== 'public') {
+                return $table['schema'] . '.' . $table['name'];
+            }
+            return $table['name'];
+        }, $tables);
+    }
+    public function getDefaultSelectedTables(array $allTables, string $driver = 'sqlite'): array
+    {
+        $filteredTables = array_filter($allTables, function ($tableName) use ($driver) {
+            if ($driver === 'pgsql' && str_contains($tableName, '.')) {
+                $parts = explode('.', $tableName);
+                if ($parts[0] !== 'public') return false;
             }
 
-            // Tabelas criadas pelo laravel
+            $cleanName = str_contains($tableName, '.') ? explode('.', $tableName)[1] : $tableName;
+
             $laravelInternalTables = [
-                'migrations',
-                'jobs',
-                'job_batches',
-                'failed_jobs',
-                'cache',
-                'cache_locks',
-                'password_reset_tokens',
-                'sessions',
+                'migrations', 'jobs', 'job_batches', 'failed_jobs',
+                'cache', 'cache_locks', 'password_reset_tokens', 'sessions',
             ];
 
-            // Ignorar tabelas do Laravel
-            if (in_array($table['name'], $laravelInternalTables)) {
-                return false;
-            }
+            if (in_array($cleanName, $laravelInternalTables)) return false;
 
             return true;
         });
 
-        // Devolve apenas os nomes das tabelas
-        return array_column($filteredTables, 'name');
+        return array_values($filteredTables);
     }
 
     // https://laravel-news.com/laravel-10-37-0#content-get-the-indexes-and-foreign-keys-of-a-table

@@ -104,6 +104,9 @@ class CreateDiagram extends Page
             $cleanTableNames = array_column($tablesData, 'name');
             $this->extractedTables = $cleanTableNames;
 
+            $engine = $state['engine'] ?? 'sqlite';
+            $preSelectedTables = $extractor->getDefaultSelectedTables($cleanTableNames, $engine);
+
             $this->detailsForm->fill([
                 'selectedTables' => $this->extractedTables,
                 'name' => $this->detailsData['name'] ?? '',
