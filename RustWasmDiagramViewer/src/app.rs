@@ -1195,11 +1195,6 @@ impl eframe::App for TemplateApp {
                     Window::new("Inspector")
                         .order(Order::Tooltip)
                         .show(ctx, |ui| {
-                            if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
-                                *self = Default::default();
-                                ctx.memory_mut(|mem| *mem = Default::default());
-                            }
-
                             if let Some(selected) = self.selected.last() {
                                 match selected {
                                     Selected::Table { table, column } => {
