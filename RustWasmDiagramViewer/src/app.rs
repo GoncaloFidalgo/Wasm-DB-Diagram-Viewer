@@ -809,14 +809,45 @@ impl TemplateApp {
 
             let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
-            if !self.read_only && (rel_first_response.clicked() || rel_second_response.clicked()) {
-                if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len());
-            }
             let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
             popup_relation_create(&rel_first_response, popup_first_id, relation, self.read_only, &mut self.selected);
             let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
             popup_relation_create(&rel_second_response, popup_second_id, relation, self.read_only, &mut self.selected);
+            if !self.read_only {
+                if rel_first_response.clicked() || rel_second_response.clicked() {
+                    if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
+                    toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len());
+                }
+                if !front_line && rel_first_response.secondary_clicked() {
+                    self.selected.clear();
+                    if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
+                    let mid = ((pts[0].x + pts[1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                    let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
+                    relation.relation_segments.insert(0, mid);
+                    relation.relation_segments.insert(1, next);
+                    Popup::open_id(ui.ctx(), popup_first_id);
+                }
+                if rel_second_response.secondary_clicked() {
+                    self.selected.clear();
+                    if front_line {
+                        relation.relation_segments.clear();
+                        let mid_x = (pts[0].x + pts[1].x)/2.0;
+                        let first = ((pts[0].x + mid_x)/2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                        let second = (pts[0].y + 20.0 - scene_transform.translation.y) / scene_transform.scaling;
+                        let third = ((pts[1].x + mid_x)/2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                        relation.relation_segments.push(first);
+                        relation.relation_segments.push(second);
+                        relation.relation_segments.push(third);
+                    } else {
+                        if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
+                        let mid = ((pts[last_idx].x + pts[last_idx - 1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                        let next = ((pts[last_idx - 1].y + pts[last_idx - 2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
+                        relation.relation_segments.push(next);
+                        relation.relation_segments.push(mid);
+                    }
+                    Popup::open_id(ui.ctx(), popup_second_id);
+                }
+            }
 
             // Segmentos
             for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
@@ -1181,7 +1212,7 @@ impl eframe::App for TemplateApp {
                 }
 
                 // Remover todos os objetos selecionados da lista
-                if bg_response.clicked() {
+                if bg_response.clicked() && !ctx.input(|i| {i.modifiers.command_only()}) {
                     self.selected.clear();
                 }
 
