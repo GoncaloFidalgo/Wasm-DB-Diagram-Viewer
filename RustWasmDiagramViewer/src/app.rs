@@ -363,6 +363,7 @@ impl Table {
                         ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
                     }
                     if inner_response.response.drag_stopped() {
+                        let mut table_adjusted = false;
                         for relation in relations {
                             if relation.tables[0] == id || relation.tables[1] == id {
                                 let (rect_a, rect_b) = ctx.data(|data| {
@@ -377,9 +378,10 @@ impl Table {
                                 };
 
                                 verify_line_segment_joins(&mut relation.relation_segments, 0, scene_transform.inverse().mul_pos(rect_a.center()).y, scene_transform.inverse().mul_pos(rect_b.center()).y);
-                                if relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
+                                if table_adjusted == false && relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
                                     let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
                                     self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                                    table_adjusted = true;
                                 }
                             }
                         }
@@ -925,8 +927,11 @@ impl TemplateApp {
                     // --- Dividir linha ---
                     if seg_response.secondary_clicked() {
                         self.selected.clear();
-                        let mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
+                        let mut mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
                         let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
+                        if let Some(mouse_pos) = ui.input(|i| {i.pointer.latest_pos()}) {
+                            mid = if is_vertical {mouse_pos.y - scene_transform.translation.y} else {mouse_pos.x - scene_transform.translation.x} / scene_transform.scaling;
+                        }
                         relation.relation_segments.insert(seg_idx + 1, mid);
                         relation.relation_segments.insert(seg_idx + 2, next);
                     }
