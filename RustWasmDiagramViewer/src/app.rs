@@ -101,8 +101,21 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
                 }
             }
         },
-        Selected::Table { table, column } => {
-
+        Selected::Table { table, .. } => {
+            for select in selected.iter_mut() {
+                match select {
+                    Selected::Relation { .. } => {}
+                    Selected::Table { column, .. } => {
+                        *column = None;
+                    }
+                }
+            }
+            if selected.contains(&item) {
+                selected.retain(|s| s != &item);
+            } else {
+                selected.retain(|s| s != &Selected::Table { table, column: None });
+                selected.push(item);
+            }
         }
     }
 }
@@ -313,6 +326,19 @@ impl Table {
             300.0_f32.max(header_width.max(max_col_width))
         });
 
+        let mut table_selected = false;
+        let mut column_selected = None;
+        for select in selected.iter() {
+            match select {
+                Selected::Relation { .. } => {}
+                Selected::Table { table, column } => {
+                    if *table == id {
+                        table_selected = true;
+                        column_selected = *column;
+                    }
+                }
+            }
+        }
         Area::new(Id::new((&self.name, id)))
             .pivot(Align2::CENTER_CENTER)
             .constrain(false)
@@ -322,7 +348,7 @@ impl Table {
                 ui.set_clip_rect(Rect::EVERYTHING);
                 Frame::new()
                     .fill(TABLE_BG)
-                    .stroke(Stroke::new(1.0, TABLE_BORDER))
+                    .stroke(Stroke::new(2.0, if table_selected {Color32::BLUE} else {TABLE_BORDER}))
                     .shadow(Shadow {
                         offset: [0, 6],
                         blur: 18,
@@ -332,14 +358,18 @@ impl Table {
                         let mut area_response = ui.allocate_ui(Vec2::ZERO, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
                             if self.header_ui(ui, table_width).clicked() && !read_only {
-                                selected.clear();
-                                selected.push(Selected::Table { table: id, column: None });
+                                if !ctx.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
                             }
                             ui.add_space(2.0);
                             for (col_idx, column) in self.columns.iter().enumerate() {
-                                if column.ui(ui, table_width, id, col_idx).clicked() && !read_only {
-                                    selected.clear();
-                                    selected.push(Selected::Table { table: id, column: Some(col_idx) });
+                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}).clicked() && !read_only {
+                                    if !ctx.input(|i| {i.modifiers.command_only()}) {
+                                        selected.clear();
+                                        toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0);
+                                    } else {
+                                        toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                    }
                                 }
                             }
                             ui.add_space(6.0);
@@ -347,8 +377,26 @@ impl Table {
 
                         if !read_only {
                             if area_response.clicked() {
-                                selected.clear();
-                                selected.push(Selected::Table { table: id, column: None });
+                                if !ctx.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                            }
+                            if area_response.drag_started() {
+                                for select in selected.iter_mut() {
+                                    match select {
+                                        Selected::Relation { .. } => {}
+                                        Selected::Table { column, .. } => {
+                                            *column = None;
+                                        }
+                                    }
+                                }
+                                let item = Selected::Table { table: id, column: None };
+                                if !selected.contains(&item) {
+                                    if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                                    toggle_selected(selected, item, 0);
+                                } else {
+                                    toggle_selected(selected, item, 0);
+                                    toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                }
                             }
                             if area_response.dragged() {
                                 self.pos += area_response.drag_delta();
@@ -454,7 +502,7 @@ impl Table {
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize) -> Response {
+    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, COL_SIZE),
             Sense::click(),
@@ -464,6 +512,10 @@ impl Column {
         ui.ctx().data_mut(|data| {
             data.insert_temp(column_rect_id, rect);
         });
+
+        if col_selected {
+            ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgb_additive(0, 0, 60));
+        }
 
         if response.hovered() {
             ui.painter().rect_filled(
@@ -538,6 +590,20 @@ impl Column {
             );
             painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
             painter.galley(badge_rect.min + pad, null_galley, NULL_TEXT);
+        }
+
+        right_x -= type_galley.rect.width() - 6.0;
+        if self.unique {
+            let unique_galley =
+                painter.layout_no_wrap("UNIQUE".to_owned(), FontId::monospace(10.0), NULL_TEXT);
+            let pad = vec2(4.0, 2.0);
+            let badge_size = unique_galley.rect.size() + pad * 2.0;
+            let badge_rect = Rect::from_min_size(
+                pos2(right_x - badge_size.x, rect.center().y - badge_size.y * 0.5),
+                badge_size,
+            );
+            painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
+            painter.galley(badge_rect.min + pad, unique_galley, NULL_TEXT);
         }
 
         Popup::menu(&response)
@@ -887,6 +953,9 @@ impl TemplateApp {
                         if !self.selected.contains(&item_seg) && !self.selected.contains(&item_rela) {
                             if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
                             toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
+                        } else {
+                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
+                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
                         }
                     }
 
