@@ -735,6 +735,8 @@ impl TemplateApp {
             let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
                 continue;
             };
+            let rect_a = scene_transform.mul_rect(rect_a);
+            let rect_b = scene_transform.mul_rect(rect_b);
 
             // Cálculos base para as posições
             let start = rect_a.center();
@@ -1126,7 +1128,7 @@ impl eframe::App for TemplateApp {
                 ui.ctx()
                     .data(|d| match d.get_temp(Id::new("scene_transform")) {
                         Some(scene_transform) => scene_transform,
-                        None => TSTransform::default(),
+                        None => TSTransform::IDENTITY,
                     });
 
             let (mut bg_response, painter) =
@@ -1228,6 +1230,10 @@ impl eframe::App for TemplateApp {
                     Window::new("Inspector")
                         .order(Order::Tooltip)
                         .show(ctx, |ui| {
+                            /* if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
+                                *self = Default::default();
+                                ctx.memory_mut(|mem| *mem = Default::default());
+                            } */
                             if let Some(selected) = self.selected.last() {
                                 match selected {
                                     Selected::Table { table, column } => {
@@ -1271,14 +1277,23 @@ impl eframe::App for TemplateApp {
 
             }
 
+            let mut new_transform: Option<TSTransform> = None;
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
+                let old_transform = scene_transform;
                 table.ui(ctx, i, &mut self.relations, &mut scene_transform, self.read_only, &mut self.selected);
+                if old_transform != scene_transform {
+                    new_transform = Some(scene_transform);
+                    scene_transform = old_transform;
+                }
             }
 
             // Desenhar as linhas das relações
-            //ctx.set_transform_layer(painter.layer_id(), scene_transform);
             self.draw_relations(ui, &painter, scene_transform);
+
+            if let Some(new_transform) = new_transform {
+                scene_transform = new_transform;
+            }
 
             ui.ctx().data_mut(|d| {
                 d.insert_temp(Id::new("scene_transform"), scene_transform);
