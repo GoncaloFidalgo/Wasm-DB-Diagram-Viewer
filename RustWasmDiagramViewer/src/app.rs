@@ -882,10 +882,11 @@ impl TemplateApp {
                         toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
                     }
                     if seg_response.drag_started() {
-                        if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                        let item = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
-                        if !self.selected.contains(&item) {
-                            toggle_selected(&mut self.selected, item, relation.relation_segments.len());
+                        let item_seg = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
+                        let item_rela = Selected::Relation { relation: rela_idx, segment: None };
+                        if !self.selected.contains(&item_seg) && !self.selected.contains(&item_rela) {
+                            if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
+                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
                         }
                     }
 
