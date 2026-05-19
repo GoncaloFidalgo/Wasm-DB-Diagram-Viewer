@@ -273,7 +273,7 @@ impl Table {
         ctx: &Context,
         id: usize,
         relations: &mut Vec<Relation>,
-        scene_transform: TSTransform,
+        mut scene_transform: &mut TSTransform,
         read_only: bool,
         selected: &mut Vec<Selected>
     ) {
@@ -313,81 +313,81 @@ impl Table {
             300.0_f32.max(header_width.max(max_col_width))
         });
 
-        let inner_window_response = Window::new(&self.name)
-            .title_bar(false)
+        Area::new(Id::new((&self.name, id)))
+            .pivot(Align2::CENTER_CENTER)
             .constrain(false)
-            .frame(
+            .fixed_pos(self.pos)
+            .show(ctx, |ui| {
+                ctx.set_transform_layer(ui.layer_id(), *scene_transform);
+                ui.set_clip_rect(Rect::EVERYTHING);
                 Frame::new()
                     .fill(TABLE_BG)
-                    .stroke(Stroke::new(1.0 * scene_transform.scaling, TABLE_BORDER))
+                    .stroke(Stroke::new(1.0, TABLE_BORDER))
                     .shadow(Shadow {
                         offset: [0, 6],
                         blur: 18,
                         spread: 0,
                         color: Color32::from_black_alpha(90),
-                    }),
-            )
-            .fixed_rect(scene_transform.mul_rect(Rect::from_center_size(
-                self.pos,
-                vec2(
-                    table_width,
-                    8.0 + HEADER_SIZE + COL_SIZE * self.columns.len() as f32,
-                ),
-            )))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing = Vec2::ZERO;
-                let inner_response = Scene::new()
-                    .zoom_range(Rangef::point(scene_transform.scaling))
-                    .drag_pan_buttons(DragPanButtons::empty())
-                    .show(ui, &mut Rect::from_pos((ui.available_size()/(2.0*scene_transform.scaling)).to_pos2()), |ui| {
-                        if self.header_ui(ui, table_width).clicked() && !read_only {
-                            selected.clear();
-                            selected.push(Selected::Table { table: id, column: None });
-                        }
-                        ui.add_space(2.0);
-                        for (col_idx, column) in self.columns.iter().enumerate() {
-                            if column.ui(ui, table_width).clicked() && !read_only {
+                    }).show(ui, |ui| {
+                        let mut area_response = ui.allocate_ui(Vec2::ZERO, |ui| {
+                            ui.spacing_mut().item_spacing = Vec2::ZERO;
+                            if self.header_ui(ui, table_width).clicked() && !read_only {
                                 selected.clear();
-                                selected.push(Selected::Table { table: id, column: Some(col_idx) });
+                                selected.push(Selected::Table { table: id, column: None });
                             }
-                        }
-                        ui.add_space(6.0);
-                    });
-                if !read_only {
-                    if inner_response.response.clicked() {
-                        selected.clear();
-                        selected.push(Selected::Table { table: id, column: None });
-                    }
-                    if inner_response.response.dragged() {
-                        self.pos += inner_response.response.drag_delta();
-                        ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-                    }
-                    if inner_response.response.drag_stopped() {
-                        let mut table_adjusted = false;
-                        for relation in relations {
-                            if relation.tables[0] == id || relation.tables[1] == id {
-                                let (rect_a, rect_b) = ctx.data(|data| {
-                                    (
-                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
-                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
-                                    )
-                                });
+                            ui.add_space(2.0);
+                            for (col_idx, column) in self.columns.iter().enumerate() {
+                                if column.ui(ui, table_width, id, col_idx).clicked() && !read_only {
+                                    selected.clear();
+                                    selected.push(Selected::Table { table: id, column: Some(col_idx) });
+                                }
+                            }
+                            ui.add_space(6.0);
+                        }).response.interact(Sense::click_and_drag());
 
-                                let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                                    continue;
-                                };
+                        if !read_only {
+                            if area_response.clicked() {
+                                selected.clear();
+                                selected.push(Selected::Table { table: id, column: None });
+                            }
+                            if area_response.dragged() {
+                                self.pos += area_response.drag_delta();
+                                ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+                            }
+                            if area_response.drag_stopped() {
+                                let mut table_adjusted = false;
+                                for relation in relations {
+                                    if relation.tables[0] == id || relation.tables[1] == id {
+                                        let (rect_a, rect_b) = ctx.data(|data| {
+                                            (
+                                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                                            )
+                                        });
 
-                                verify_line_segment_joins(&mut relation.relation_segments, 0, scene_transform.inverse().mul_pos(rect_a.center()).y, scene_transform.inverse().mul_pos(rect_b.center()).y);
-                                if table_adjusted == false && relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
-                                    let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
-                                    self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
-                                    table_adjusted = true;
+                                        let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                                            continue;
+                                        };
+
+                                        verify_line_segment_joins(&mut relation.relation_segments, 0, scene_transform.inverse().mul_pos(rect_a.center()).y, scene_transform.inverse().mul_pos(rect_b.center()).y);
+                                        if table_adjusted == false && relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
+                                            let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
+                                            self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                                            table_adjusted = true;
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
+                        Scene::new()
+                            .drag_pan_buttons(DragPanButtons::empty())
+                            .zoom_range(Rangef::new(0.5, 2.0))
+                            .register_pan_and_zoom(ui, &mut area_response, &mut scene_transform);
+                    });
             });
+        /* let inner_window_response = Window::new(&self.name)
+            
+            
         if let Some(inner_window_response) = inner_window_response {
             let table_rect = inner_window_response.response.rect;
             for (col_idx, _column) in self.columns.iter().enumerate() {
@@ -404,7 +404,7 @@ impl Table {
                     data.insert_temp(column_rect_id, col_rect);
                 });
             }
-        }
+        } */
     }
 
     fn header_ui(&mut self, ui: &mut Ui, table_width: f32) -> Response {
@@ -454,11 +454,16 @@ impl Table {
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_width: f32) -> Response {
+    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, COL_SIZE),
             Sense::click(),
         );
+
+        let column_rect_id = Id::new(("column_rect", table_id, col_id));
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(column_rect_id, rect);
+        });
 
         if response.hovered() {
             ui.painter().rect_filled(
@@ -1208,14 +1213,6 @@ impl eframe::App for TemplateApp {
                 }
             }
             if !self.exporting {
-                // Desativar scrolling fora do background e aplicar na scene
-                if !bg_response.hovered() {
-                    ctx.input_mut(|i| {
-                        scene_transform.translation += i.smooth_scroll_delta;
-                        i.smooth_scroll_delta = Vec2::ZERO;
-                    });
-                }
-
                 // Remover todos os objetos selecionados da lista
                 if bg_response.clicked() && !ctx.input(|i| {i.modifiers.command_only()}) {
                     self.selected.clear();
@@ -1276,10 +1273,11 @@ impl eframe::App for TemplateApp {
 
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
-                table.ui(ctx, i, &mut self.relations, scene_transform, self.read_only, &mut self.selected);
+                table.ui(ctx, i, &mut self.relations, &mut scene_transform, self.read_only, &mut self.selected);
             }
 
             // Desenhar as linhas das relações
+            //ctx.set_transform_layer(painter.layer_id(), scene_transform);
             self.draw_relations(ui, &painter, scene_transform);
 
             ui.ctx().data_mut(|d| {
