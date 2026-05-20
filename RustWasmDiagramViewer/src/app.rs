@@ -433,26 +433,6 @@ impl Table {
                             .register_pan_and_zoom(ui, &mut area_response, &mut scene_transform);
                     });
             });
-        /* let inner_window_response = Window::new(&self.name)
-            
-            
-        if let Some(inner_window_response) = inner_window_response {
-            let table_rect = inner_window_response.response.rect;
-            for (col_idx, _column) in self.columns.iter().enumerate() {
-                let y = table_rect.top()
-                    + (HEADER_SIZE + 2.0 + (col_idx as f32 * COL_SIZE)) * scene_transform.scaling;
-
-                let col_rect = Rect::from_min_size(
-                    pos2(table_rect.left(), y),
-                    vec2(table_rect.width(), COL_SIZE * scene_transform.scaling),
-                );
-
-                let column_rect_id = Id::new(("column_rect", id, col_idx));
-                ctx.data_mut(|data| {
-                    data.insert_temp(column_rect_id, col_rect);
-                });
-            }
-        } */
     }
 
     fn header_ui(&mut self, ui: &mut Ui, table_width: f32) -> Response {
