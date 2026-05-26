@@ -28,10 +28,10 @@ class DiagramResource extends Resource
     protected static ?int $navigationSort = 1;
     #endregion
 
-    public static function form(Schema $schema): Schema
-    {
-        return DiagramForm::configure($schema);
-    }
+//    public static function form(Schema $schema): Schema
+//    {
+//        return DiagramForm::configure($schema);
+//    }
 
     public static function table(Table $table): Table
     {

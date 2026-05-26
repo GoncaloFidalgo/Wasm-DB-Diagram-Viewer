@@ -118,7 +118,7 @@ class DatabaseExtractorService
             $foreignKeys = $this->fetchForeignKeys($tableName);
 
             foreach ($foreignKeys as $fk) {
-                $fromTableIdx = $tableIndices[$tableName] ?? null;
+                $fromTableIdx = $tableIndices[$tableName];
                 $toTableIdx   = $tableIndices[$fk->table] ?? null;
 
                 $fromColIdx = $columnIndices[$tableName][$fk->from] ?? null;
@@ -147,7 +147,7 @@ class DatabaseExtractorService
      * ==========================================
      */
 
-    private function setupConnection(?string $path, string $engine, array $state = []) : void
+    public function setupConnection(?string $path, string $engine, array $state = []) : void
     {
         if ($engine === 'mysql') {
             Config::set('database.connections.dynamic_extract', [
@@ -240,7 +240,7 @@ class DatabaseExtractorService
     }
 
     //https://laravel-news.com/laravel-10-37-0#content-get-the-indexes-and-foreign-keys-of-a-table
-    private function fetchForeignKeys(string $tableName): array
+    public function fetchForeignKeys(string $tableName): array
     {
         $normalized = [];
         $fks = Schema::connection('dynamic_extract')->getForeignKeys($tableName);
@@ -259,4 +259,6 @@ class DatabaseExtractorService
         }
         return $normalized;
     }
+
+
 }

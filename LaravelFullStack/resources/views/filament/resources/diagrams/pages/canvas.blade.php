@@ -188,4 +188,17 @@
             }
         });
     });
+    window.addEventListener('trigger-rust-sync', () => {
+        if (window.wasmHandle) {
+            window.wasmHandle.trigger_sync();
+            const canvas = document.getElementById('canvas_id');
+            if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
+        }
+    });
+
+
+    window.openSyncModal = function(jsonString) {
+        Livewire.dispatch('open-sync-modal', { jsonString: jsonString });
+    };
+
 </script>
