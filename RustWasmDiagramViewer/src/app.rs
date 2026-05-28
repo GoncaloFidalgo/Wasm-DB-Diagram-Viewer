@@ -201,6 +201,29 @@ impl Default for TemplateApp {
                     ],
                     description: String::new(),
                 },
+                Table {
+                    name: String::from("quarta"),
+                    pos: pos2(500.0, 600.0),
+                    columns: vec![
+                        Column {
+                            name: String::from("id"),
+                            column_type: String::from("NUMBER"),
+                            nullable: false,
+                            unique: false,
+                            key_type: String::from("PK"),
+                            description: String::new(),
+                        },
+                        Column {
+                            name: String::from("valor"),
+                            column_type: String::from("NUMBER"),
+                            nullable: true,
+                            unique: false,
+                            key_type: String::new(),
+                            description: String::new(),
+                        },
+                    ],
+                    description: String::new(),
+                },
             ],
             relations: vec![
                 Relation {
@@ -215,6 +238,41 @@ impl Default for TemplateApp {
                     relation_segments: vec![],
                     tables: [1, 2],
                     columns: [2, 0],
+                    description: String::new(),
+                },
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![],
+                    tables: [2, 3],
+                    columns: [0, 0],
+                    description: String::new(),
+                },
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![],
+                    tables: [3, 2],
+                    columns: [1, 0],
+                    description: String::new(),
+                },
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![],
+                    tables: [1, 2],
+                    columns: [2, 1],
+                    description: String::new(),
+                },
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![],
+                    tables: [2, 3],
+                    columns: [1, 0],
+                    description: String::new(),
+                },
+                Relation {
+                    name: String::new(),
+                    relation_segments: vec![],
+                    tables: [3, 2],
+                    columns: [1, 1],
                     description: String::new(),
                 },
             ],
@@ -275,8 +333,12 @@ const POPUP_BG: Color32 = Color32::from_rgb(24, 24, 28);
 const POPUP_BORDER: Color32 = Color32::from_gray(52);
 
 // Constantes para definir tamanhos dos elementos das tabelas
-const HEADER_SIZE: f32 = 32.0;
-const COL_SIZE: f32 = 26.0;
+const HEADER_SIZE: f32 = 40.0;
+const COL_SIZE: f32 = 36.0;
+
+// Constantes para definir tamanhos dos elementos das relacoes
+const NOTATION_SIZE: f32 = 6.0;
+const TABLE_PROXIMITY_LIMIT: f32 = 20.0;
 
 // --- Implementações das estruturas ---
 
@@ -285,14 +347,13 @@ impl Table {
         &mut self,
         ctx: &Context,
         id: usize,
-        relations: &mut Vec<Relation>,
         mut scene_transform: &mut TSTransform,
         read_only: bool,
         selected: &mut Vec<Selected>
-    ) -> Vec2 {
+    ) -> (Vec2, Option<usize>) {
         let table_width = ctx.fonts_mut(|f| {
             let header_width = f
-                .layout_no_wrap(self.name.clone(), FontId::proportional(14.5), HEADER_TEXT)
+                .layout_no_wrap(self.name.clone(), FontId::proportional(18.5), HEADER_TEXT)
                 .rect
                 .width();
 
@@ -327,6 +388,7 @@ impl Table {
         });
 
         let mut delta_used = Vec2::ZERO;
+        let mut drag_stopped_on = None;
 
         let mut table_selected = false;
         let mut column_selected = None;
@@ -405,29 +467,7 @@ impl Table {
                                 ctx.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
                             }
                             if area_response.drag_stopped() {
-                                let mut table_adjusted = false;
-                                for relation in relations.iter_mut() {
-                                    if relation.tables[0] == id || relation.tables[1] == id {
-                                        let (rect_a, rect_b) = ctx.data(|data| {
-                                            (
-                                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
-                                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
-                                            )
-                                        });
-
-                                        let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                                            continue;
-                                        };
-
-                                        if table_adjusted == false && relation.relation_segments.len() <= 1 && (rect_a.center().y - rect_b.center().y).abs() < 5.0 * scene_transform.scaling {
-                                            let adjust_y = scene_transform.inverse().mul_pos(rect_a.center()).y - scene_transform.inverse().mul_pos(rect_b.center()).y;
-                                            self.pos += if relation.tables[0] == id {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
-                                            table_adjusted = true;
-                                        }
-                                    }
-                                }
-                                
-                                use_verify_in_selected(ctx, selected, relations, *scene_transform);
+                                drag_stopped_on = Some(id);
                             }
                         }
                         Scene::new()
@@ -437,7 +477,7 @@ impl Table {
                     });
             });
 
-        return delta_used;
+        return (delta_used, drag_stopped_on);
     }
 
     fn header_ui(&mut self, ui: &mut Ui, table_width: f32) -> Response {
@@ -458,7 +498,7 @@ impl Table {
             rect.center(),
             Align2::CENTER_CENTER,
             &self.name,
-            FontId::proportional(14.0),
+            FontId::proportional(18.0),
             HEADER_TEXT,
         );
 
@@ -494,8 +534,12 @@ impl Column {
         );
 
         let column_rect_id = Id::new(("column_rect", table_id, col_id));
+        let column_rect_relation_types_new_left_id = Id::new(("column_relation_types_new", true, table_id, col_id));
+        let column_rect_relation_types_new_right_id = Id::new(("column_relation_types_new", false, table_id, col_id));
         ui.ctx().data_mut(|data| {
             data.insert_temp(column_rect_id, rect);
+            data.insert_temp(column_rect_relation_types_new_left_id, [false, false, false]);
+            data.insert_temp(column_rect_relation_types_new_right_id, [false, false, false]);
         });
 
         if col_selected {
@@ -743,8 +787,8 @@ impl TemplateApp {
     }
     fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter, scene_transform: TSTransform) {
         let line_width: f32 = 2.5 * scene_transform.scaling;
-        let table_proximity_limit: f32 = 20.0 * scene_transform.scaling;
-        let notation_size: f32 = 8.0 * scene_transform.scaling;
+        let table_proximity_limit: f32 = TABLE_PROXIMITY_LIMIT * scene_transform.scaling;
+        let notation_size: f32 = NOTATION_SIZE * scene_transform.scaling;
         let interact_hitbox_size: f32 = 14.0 * scene_transform.scaling;
 
         struct RelationToDraw {
@@ -775,12 +819,8 @@ impl TemplateApp {
             // Obter os retângulos para ligar a relação
             let (rect_a, rect_b) = ui.ctx().data(|data| {
                 (
-                    data.get_temp::<Rect>(
-                        Id::new(("column_rect", relation.tables[0], relation.columns[0]))
-                    ),
-                    data.get_temp::<Rect>(
-                        Id::new(("column_rect", relation.tables[1], relation.columns[1]))
-                    )
+                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
                 )
             });
 
@@ -791,15 +831,96 @@ impl TemplateApp {
             let rect_b = scene_transform.mul_rect(rect_b);
 
             // Cálculos base para as posições
-            let start = rect_a.center();
+            let mut start = rect_a.center();
             let start_offset = rect_a.width() / 2.0;
 
-            let end = rect_b.center();
+            let mut end = rect_b.center();
             let end_offset = rect_b.width() / 2.0;
 
-            let front_line = relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 3.0 * scene_transform.scaling;
+            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
             let auto_align = relation.relation_segments.is_empty();
             let x_align = (start.x + end.x) / 2.0;
+
+            let start_goes_left = if auto_align {
+                if enough_space {start.x > end.x} else {false}
+            } else {
+                (if enough_space {start.x} else {x_align}) > *relation.relation_segments.first().unwrap() * scene_transform.scaling + scene_transform.translation.x
+            };
+            let start_dir = if start_goes_left { -1.0 } else { 1.0 };
+
+            let end_goes_left = if auto_align {
+                if enough_space {end.x > start.x} else {false}
+            } else {
+                (if enough_space {end.x} else {x_align}) > *relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x
+            };
+            let end_dir = if end_goes_left { -1.0 } else { 1.0 };
+
+            // Tipos existentes nas colunas [bool; 3] Multi, One, Zero
+            let start_column_relation_types_new_id = Id::new(("column_relation_types_new", start_goes_left, relation.tables[0], relation.columns[0]));
+            let end_column_relation_types_new_id = Id::new(("column_relation_types_new", end_goes_left, relation.tables[1], relation.columns[1]));
+            let (start_relation_types_new, end_relation_types_new, start_relation_types_old, end_relation_types_old) = ui.ctx().data(|data| {
+                (
+                    data.get_temp::<[bool; 3]>(start_column_relation_types_new_id),
+                    data.get_temp::<[bool; 3]>(end_column_relation_types_new_id),
+                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", start_goes_left, relation.tables[0], relation.columns[0]))),
+                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", end_goes_left, relation.tables[1], relation.columns[1])))
+                )
+            });
+
+            let (Some(mut start_relation_types_new), Some(mut end_relation_types_new)) = (start_relation_types_new, end_relation_types_new) else {
+                continue;
+            };
+
+            let start_relation_types_old = match start_relation_types_old {
+                None => [false, false, false],
+                Some(relation_types) => relation_types
+            };
+            let end_relation_types_old = match end_relation_types_old {
+                None => [false, false, false],
+                Some(relation_types) => relation_types
+            };
+
+            let adjust_start_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
+                start_relation_types_new[1] = true;
+                notation_size *
+                -start_dir *
+                if start_relation_types_old[0] && start_relation_types_old[2] {2.0}
+                else if start_relation_types_old[0] || start_relation_types_old[2] {1.0}
+                else {0.0}
+            } else {
+                start_relation_types_new[0] = true;
+                notation_size *
+                start_dir *
+                if start_relation_types_old[1] && start_relation_types_old[2] {2.0}
+                else if start_relation_types_old[1] || start_relation_types_old[2] {1.0}
+                else {0.0}
+            };
+            let adjust_end_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
+                end_relation_types_new[2] = true;
+                notation_size *
+                end_dir *
+                if end_relation_types_old[1] {1.0} else {-1.0} *
+                if end_relation_types_old[0] && end_relation_types_old[1] {0.0}
+                else if end_relation_types_old[0] || end_relation_types_old[1] {1.0}
+                else {0.0}
+            } else {
+                end_relation_types_new[1] = true;
+                notation_size *
+                -end_dir *
+                if end_relation_types_old[0] && end_relation_types_old[2] {2.0}
+                else if end_relation_types_old[0] || end_relation_types_old[2] {1.0}
+                else {0.0}
+            };
+
+            start.y += adjust_start_y;
+            end.y += adjust_end_y;
+
+            ui.ctx().data_mut(|data| {
+                data.insert_temp(start_column_relation_types_new_id, start_relation_types_new);
+                data.insert_temp(end_column_relation_types_new_id, end_relation_types_new);
+            });
+
+            let front_line = start_dir != end_dir && relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 3.0 * scene_transform.scaling;
 
             // Criar pontos inicias para o caminho da relação
             let mut pts = Vec::from([start]);
@@ -823,15 +944,9 @@ impl TemplateApp {
             pts.push(end);
 
             // Ajustar posição da linha com base no limite dos retangulos das tabelas e desenhar as notações
-
             let last_idx = pts.len() - 1;
-            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
 
             // --- Primeira Tabela FK ---
-            let start_goes_left = (if enough_space { pts[0].x } else { x_align }) > pts[1].x;
-
-            let start_dir = if start_goes_left { -1.0 } else { 1.0 };
-
             pts[0].x += start_dir * start_offset;
             if !front_line {
                 let new_start_x = if start_goes_left {
@@ -844,9 +959,6 @@ impl TemplateApp {
             }
 
             // --- Segunda Tabela PK --
-            let end_goes_left = if enough_space {pts[last_idx].x} else {x_align} > pts[last_idx-1].x;
-            let end_dir = if end_goes_left { -1.0 } else { 1.0 };
-
             pts[last_idx].x += end_dir * end_offset;
             if !front_line {
                 let new_end_x = if end_goes_left {
@@ -863,7 +975,7 @@ impl TemplateApp {
                     unique: self.tables[relation.tables[0]].columns[relation.columns[0]].unique,
                     nullable: self.tables[relation.tables[0]].columns[relation.columns[0]].nullable});
             } else {
-                draw_visual_relation(painter, &pts, line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx,
+                draw_visual_relation(painter, &pts, false, line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx,
                     self.tables[relation.tables[0]].columns[relation.columns[0]].unique,
                     self.tables[relation.tables[0]].columns[relation.columns[0]].nullable);
             }
@@ -982,7 +1094,7 @@ impl TemplateApp {
                         relation.relation_segments.insert(seg_idx + 2, next);
                     }
 
-                    let (start, end) = (scene_transform.inverse().mul_pos(start), scene_transform.inverse().mul_pos(end));
+                    let (start, end) = (scene_transform.inverse().mul_pos(pts[0]), scene_transform.inverse().mul_pos(pts[last_idx]));
 
                     if seg_response.drag_stopped() {
                         drag_stopped = true;
@@ -1033,7 +1145,7 @@ impl TemplateApp {
         }
 
         for relation_to_draw in relations_to_draw.iter() {
-            draw_visual_relation(painter, &relation_to_draw.pts, relation_to_draw.line_stroke, relation_to_draw.table_proximity_limit, relation_to_draw.notation_size, relation_to_draw.start_dir, relation_to_draw.end_dir, relation_to_draw.last_idx, relation_to_draw.unique, relation_to_draw.nullable);
+            draw_visual_relation(painter, &relation_to_draw.pts, true, relation_to_draw.line_stroke, relation_to_draw.table_proximity_limit, relation_to_draw.notation_size, relation_to_draw.start_dir, relation_to_draw.end_dir, relation_to_draw.last_idx, relation_to_draw.unique, relation_to_draw.nullable);
         }
         for segment_to_draw_rect in relation_segments_to_draw {
             painter.rect_filled(segment_to_draw_rect, CornerRadius::ZERO, Color32::BLUE);
@@ -1044,12 +1156,23 @@ impl TemplateApp {
         }
 
         if drag_stopped {
-            use_verify_in_selected(ui.ctx(), &mut self.selected, &mut self.relations, scene_transform);
+            use_verify_in_selected(ui.ctx(), &mut self.selected, &mut self.relations);
+        }
+
+        for (table_idx, table) in self.tables.iter().enumerate() {
+            for (col_idx, _) in table.columns.iter().enumerate() {
+                ui.ctx().data_mut(|data| {
+                    data.insert_temp(Id::new(("column_relation_types_old", true, table_idx, col_idx)),
+                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_new", true, table_idx, col_idx))).unwrap());
+                    data.insert_temp(Id::new(("column_relation_types_old", false, table_idx, col_idx)),
+                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_new", false, table_idx, col_idx))).unwrap());
+                })
+            }
         }
     }
 }
 
-fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool) {
+fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool) {
     let mut pts = pts.clone();
     if unique {
         // Desenhar a notação One
@@ -1079,8 +1202,15 @@ fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, line_stroke: Stroke,
         painter.line_segment([crow_up_base, down_up_base], line_stroke);
     }
 
+    let start_text_pos = pts[0] + vec2(start_dir * table_proximity_limit / 3.0, -notation_size*2.0);
+    let end_text_pos = pts[last_idx] + vec2(end_dir * table_proximity_limit / 3.0, -notation_size*2.0);
+
     // Desenhar a linha completa
     painter.line(pts, line_stroke);
+    if selected {
+        painter.text(start_text_pos, Align2::CENTER_CENTER, if unique {"1"} else {"*"}, FontId::monospace(notation_size*2.0), Color32::BLACK);
+        painter.text(end_text_pos, Align2::CENTER_CENTER, if nullable {"0..1"} else {"1"}, FontId::monospace(notation_size*2.0), Color32::BLACK);
+    }
 }
 
 fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, read_only: bool, selected: &mut Vec<Selected>) {
@@ -1305,18 +1435,120 @@ impl eframe::App for TemplateApp {
             }
 
             let mut delta_used = Vec2::ZERO;
+            let mut drag_stopped_on: Option<usize> = None;
             let mut new_transform: Option<TSTransform> = None;
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
                 let old_transform = scene_transform;
-                let delta_received = table.ui(ctx, i, &mut self.relations, &mut scene_transform, self.read_only, &mut self.selected);
+                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut scene_transform, self.read_only, &mut self.selected);
                 if delta_received != Vec2::ZERO {
                     delta_used = delta_received;
+                }
+                if drag_stopped_on_received != None {
+                    drag_stopped_on = drag_stopped_on_received;
                 }
                 if old_transform != scene_transform {
                     new_transform = Some(scene_transform);
                     scene_transform = old_transform;
                 }
+            }
+
+            if let Some(drag_stopped_on) = drag_stopped_on {
+                let mut table_adjusted = false;
+                for relation in self.relations.iter_mut() {
+                    if table_adjusted == false && relation.tables[0] == drag_stopped_on || relation.tables[1] == drag_stopped_on {
+                        let (rect_a, rect_b) = ctx.data(|data| {
+                            (
+                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                            )
+                        });
+
+                        let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                            continue;
+                        };
+
+                        let mut start = rect_a.center();
+                        let start_offset = rect_a.width() / 2.0;
+
+                        let mut end = rect_b.center();
+                        let end_offset = rect_b.width() / 2.0;
+
+                        let enough_space = (start.x - end.x).abs() > start_offset + end_offset + TABLE_PROXIMITY_LIMIT * 2.0;
+                        let auto_align = relation.relation_segments.is_empty();
+                        let x_align = (start.x + end.x) / 2.0;
+
+                        let start_goes_left = if auto_align {
+                            if enough_space {start.x > end.x} else {false}
+                        } else {
+                            (if enough_space {start.x} else {x_align}) > *relation.relation_segments.first().unwrap()
+                        };
+                        let start_dir = if start_goes_left { -1.0 } else { 1.0 };
+
+                        let end_goes_left = if auto_align {
+                            if enough_space {end.x > start.x} else {false}
+                        } else {
+                            (if enough_space {end.x} else {x_align}) > *relation.relation_segments.last().unwrap()
+                        };
+                        let end_dir = if end_goes_left { -1.0 } else { 1.0 };
+
+                        // Tipos existentes nas colunas [bool; 3] Multi, One, Zero
+                        let (start_relation_types_old, end_relation_types_old) = ctx.data(|data| {
+                            (
+                                data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", start_goes_left, relation.tables[0], relation.columns[0]))),
+                                data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", end_goes_left, relation.tables[1], relation.columns[1])))
+                            )
+                        });
+
+                        let start_relation_types_old = match start_relation_types_old {
+                            None => [false, false, false],
+                            Some(relation_types) => relation_types
+                        };
+                        let end_relation_types_old = match end_relation_types_old {
+                            None => [false, false, false],
+                            Some(relation_types) => relation_types
+                        };
+
+                        let adjust_start_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
+                            NOTATION_SIZE *
+                            -start_dir *
+                            if start_relation_types_old[0] && start_relation_types_old[2] {2.0}
+                            else if start_relation_types_old[0] || start_relation_types_old[2] {1.0}
+                            else {0.0}
+                        } else {
+                            NOTATION_SIZE *
+                            start_dir *
+                            if start_relation_types_old[1] && start_relation_types_old[2] {2.0}
+                            else if start_relation_types_old[1] || start_relation_types_old[2] {1.0}
+                            else {0.0}
+                        };
+                        let adjust_end_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
+                            NOTATION_SIZE *
+                            end_dir *
+                            if end_relation_types_old[1] {1.0} else {-1.0} *
+                            if end_relation_types_old[0] && end_relation_types_old[1] {0.0}
+                            else if end_relation_types_old[0] || end_relation_types_old[1] {1.0}
+                            else {0.0}
+                        } else {
+                            NOTATION_SIZE *
+                            -end_dir *
+                            if end_relation_types_old[0] && end_relation_types_old[2] {2.0}
+                            else if end_relation_types_old[0] || end_relation_types_old[2] {1.0}
+                            else {0.0}
+                        };
+
+                        start.y += adjust_start_y;
+                        end.y += adjust_end_y;
+
+                        if relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 5.0 {
+                            let adjust_y = start.y - end.y;
+                            self.tables[drag_stopped_on].pos += if relation.tables[0] == drag_stopped_on {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                            table_adjusted = true;
+                        }
+                    }
+                }
+                
+                use_verify_in_selected(ctx, &mut self.selected, &mut self.relations);
             }
 
             // Desenhar as linhas das relações
@@ -1374,7 +1606,7 @@ fn move_all_selected(delta: Vec2, selected: &mut Vec<Selected>, relations: &mut 
     }
 }
 
-fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, scene_transform: TSTransform) {
+fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>) {
     let mut relation_segments_drag_stopped_to_verify: Vec<[usize; 3]> = Vec::new();//relationID/fullRelationBinary/segmentID
     for selected in selected.iter() {
         match selected {
@@ -1412,8 +1644,8 @@ fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations
             continue;
         };
 
-        let start_height = scene_transform.inverse().mul_pos(rect_a.center()).y;
-        let end_height = scene_transform.inverse().mul_pos(rect_b.center()).y;
+        let start_height = rect_a.center().y;
+        let end_height = rect_b.center().y;
 
         if relation_segment[1] == 1 {
             verify_line_segment_joins(&mut relation.relation_segments, 0, start_height, end_height, selected, rela_idx);
