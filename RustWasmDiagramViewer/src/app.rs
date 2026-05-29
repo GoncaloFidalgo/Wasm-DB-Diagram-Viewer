@@ -1454,101 +1454,7 @@ impl eframe::App for TemplateApp {
             }
 
             if let Some(drag_stopped_on) = drag_stopped_on {
-                let mut table_adjusted = false;
-                for relation in self.relations.iter_mut() {
-                    if table_adjusted == false && relation.tables[0] == drag_stopped_on || relation.tables[1] == drag_stopped_on {
-                        let (rect_a, rect_b) = ctx.data(|data| {
-                            (
-                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
-                                data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
-                            )
-                        });
-
-                        let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                            continue;
-                        };
-
-                        let mut start = rect_a.center();
-                        let start_offset = rect_a.width() / 2.0;
-
-                        let mut end = rect_b.center();
-                        let end_offset = rect_b.width() / 2.0;
-
-                        let enough_space = (start.x - end.x).abs() > start_offset + end_offset + TABLE_PROXIMITY_LIMIT * 2.0;
-                        let auto_align = relation.relation_segments.is_empty();
-                        let x_align = (start.x + end.x) / 2.0;
-
-                        let start_goes_left = if auto_align {
-                            if enough_space {start.x > end.x} else {false}
-                        } else {
-                            (if enough_space {start.x} else {x_align}) > *relation.relation_segments.first().unwrap()
-                        };
-                        let start_dir = if start_goes_left { -1.0 } else { 1.0 };
-
-                        let end_goes_left = if auto_align {
-                            if enough_space {end.x > start.x} else {false}
-                        } else {
-                            (if enough_space {end.x} else {x_align}) > *relation.relation_segments.last().unwrap()
-                        };
-                        let end_dir = if end_goes_left { -1.0 } else { 1.0 };
-
-                        // Tipos existentes nas colunas [bool; 3] Multi, One, Zero
-                        let (start_relation_types_old, end_relation_types_old) = ctx.data(|data| {
-                            (
-                                data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", start_goes_left, relation.tables[0], relation.columns[0]))),
-                                data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", end_goes_left, relation.tables[1], relation.columns[1])))
-                            )
-                        });
-
-                        let start_relation_types_old = match start_relation_types_old {
-                            None => [false, false, false],
-                            Some(relation_types) => relation_types
-                        };
-                        let end_relation_types_old = match end_relation_types_old {
-                            None => [false, false, false],
-                            Some(relation_types) => relation_types
-                        };
-
-                        let adjust_start_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
-                            NOTATION_SIZE *
-                            -start_dir *
-                            if start_relation_types_old[0] && start_relation_types_old[2] {2.0}
-                            else if start_relation_types_old[0] || start_relation_types_old[2] {1.0}
-                            else {0.0}
-                        } else {
-                            NOTATION_SIZE *
-                            start_dir *
-                            if start_relation_types_old[1] && start_relation_types_old[2] {2.0}
-                            else if start_relation_types_old[1] || start_relation_types_old[2] {1.0}
-                            else {0.0}
-                        };
-                        let adjust_end_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
-                            NOTATION_SIZE *
-                            end_dir *
-                            if end_relation_types_old[1] {1.0} else {-1.0} *
-                            if end_relation_types_old[0] && end_relation_types_old[1] {0.0}
-                            else if end_relation_types_old[0] || end_relation_types_old[1] {1.0}
-                            else {0.0}
-                        } else {
-                            NOTATION_SIZE *
-                            -end_dir *
-                            if end_relation_types_old[0] && end_relation_types_old[2] {2.0}
-                            else if end_relation_types_old[0] || end_relation_types_old[2] {1.0}
-                            else {0.0}
-                        };
-
-                        start.y += adjust_start_y;
-                        end.y += adjust_end_y;
-
-                        if relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 5.0 {
-                            let adjust_y = start.y - end.y;
-                            self.tables[drag_stopped_on].pos += if relation.tables[0] == drag_stopped_on {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
-                            table_adjusted = true;
-                        }
-                    }
-                }
-                
-                use_verify_in_selected(ctx, &mut self.selected, &mut self.relations);
+                drag_stopped_on_table(drag_stopped_on, ctx, &mut self.selected, &mut self.relations, &mut self.tables);
             }
 
             // Desenhar as linhas das relações
@@ -1572,6 +1478,104 @@ impl eframe::App for TemplateApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
+}
+
+fn drag_stopped_on_table(table_idx: usize, ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, tables: &mut Vec<Table>) {
+    let mut table_adjusted = false;
+    for relation in relations.iter_mut() {
+        if table_adjusted == false && relation.tables[0] == table_idx || relation.tables[1] == table_idx {
+            let (rect_a, rect_b) = ctx.data(|data| {
+                (
+                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                )
+            });
+
+            let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                continue;
+            };
+
+            let mut start = rect_a.center();
+            let start_offset = rect_a.width() / 2.0;
+
+            let mut end = rect_b.center();
+            let end_offset = rect_b.width() / 2.0;
+
+            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + TABLE_PROXIMITY_LIMIT * 2.0;
+            let auto_align = relation.relation_segments.is_empty();
+            let x_align = (start.x + end.x) / 2.0;
+
+            let start_goes_left = if auto_align {
+                if enough_space {start.x > end.x} else {false}
+            } else {
+                (if enough_space {start.x} else {x_align}) > *relation.relation_segments.first().unwrap()
+            };
+            let start_dir = if start_goes_left { -1.0 } else { 1.0 };
+
+            let end_goes_left = if auto_align {
+                if enough_space {end.x > start.x} else {false}
+            } else {
+                (if enough_space {end.x} else {x_align}) > *relation.relation_segments.last().unwrap()
+            };
+            let end_dir = if end_goes_left { -1.0 } else { 1.0 };
+
+            // Tipos existentes nas colunas [bool; 3] Multi, One, Zero
+            let (start_relation_types_old, end_relation_types_old) = ctx.data(|data| {
+                (
+                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", start_goes_left, relation.tables[0], relation.columns[0]))),
+                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", end_goes_left, relation.tables[1], relation.columns[1])))
+                )
+            });
+
+            let start_relation_types_old = match start_relation_types_old {
+                None => [false, false, false],
+                Some(relation_types) => relation_types
+            };
+            let end_relation_types_old = match end_relation_types_old {
+                None => [false, false, false],
+                Some(relation_types) => relation_types
+            };
+
+            let adjust_start_y = if tables[relation.tables[0]].columns[relation.columns[0]].unique {
+                NOTATION_SIZE *
+                -start_dir *
+                if start_relation_types_old[0] && start_relation_types_old[2] {2.0}
+                else if start_relation_types_old[0] || start_relation_types_old[2] {1.0}
+                else {0.0}
+            } else {
+                NOTATION_SIZE *
+                start_dir *
+                if start_relation_types_old[1] && start_relation_types_old[2] {2.0}
+                else if start_relation_types_old[1] || start_relation_types_old[2] {1.0}
+                else {0.0}
+            };
+            let adjust_end_y = if tables[relation.tables[0]].columns[relation.columns[0]].nullable {
+                NOTATION_SIZE *
+                end_dir *
+                if end_relation_types_old[1] {1.0} else {-1.0} *
+                if end_relation_types_old[0] && end_relation_types_old[1] {0.0}
+                else if end_relation_types_old[0] || end_relation_types_old[1] {1.0}
+                else {0.0}
+            } else {
+                NOTATION_SIZE *
+                -end_dir *
+                if end_relation_types_old[0] && end_relation_types_old[2] {2.0}
+                else if end_relation_types_old[0] || end_relation_types_old[2] {1.0}
+                else {0.0}
+            };
+
+            start.y += adjust_start_y;
+            end.y += adjust_end_y;
+
+            if relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 5.0 {
+                let adjust_y = start.y - end.y;
+                tables[table_idx].pos += if relation.tables[0] == table_idx {vec2(0.0, -adjust_y)} else {vec2(0.0, adjust_y)};
+                table_adjusted = true;
+            }
+        }
+    }
+    
+    use_verify_in_selected(ctx, selected, relations);
 }
 
 fn move_all_selected(delta: Vec2, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, tables: &mut Vec<Table>) {
@@ -1746,6 +1750,9 @@ fn verify_line_segment_joins(
                 }
             }
         }
+    }
+    if segments.len() == 1 && (start_height - end_height).abs() < LINE_JOIN_LIMIT {
+        segments.clear();
     }
 
     let selected_segments = selected.iter().filter(|s| {
