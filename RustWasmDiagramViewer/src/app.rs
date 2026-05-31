@@ -13,6 +13,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window)]
     fn savePixelsAsPng(width: u32, height: u32, pixels: &[u8]);
+
+    #[wasm_bindgen(js_namespace = window)]
+    fn openSyncModal(json_data: &str);
 }
 
 // --- Estruturas ---
@@ -40,6 +43,8 @@ pub struct TemplateApp {
     pub export_trigger: Arc<Mutex<bool>>,
     #[serde(skip)]
     pub exporting: bool,
+    #[serde(skip)]
+    pub sync_trigger: Arc<Mutex<bool>>,
 }
 #[derive(PartialEq)]
 pub enum Selected {
@@ -284,6 +289,7 @@ impl Default for TemplateApp {
             update_read_only: Arc::new(Mutex::new(None)),
             export_trigger: Arc::new(Mutex::new(false)),
             exporting: false,
+            sync_trigger: Arc::new(Mutex::new(false)),
         }
     }
 }
@@ -735,6 +741,7 @@ impl TemplateApp {
         update_json: Arc<Mutex<Option<String>>>,
         update_read_only: Arc<Mutex<Option<bool>>>,
         export_trigger_clone: Arc<Mutex<bool>>,
+        sync_trigger_clone: Arc<Mutex<bool>>,
     ) -> Self {
         let mut app: TemplateApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -752,6 +759,7 @@ impl TemplateApp {
                     app_state.update_json = update_json.clone();
                     app_state.update_read_only = update_read_only.clone();
                     app_state.export_trigger = export_trigger_clone.clone();
+                    app_state.sync_trigger = sync_trigger_clone.clone();
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -761,6 +769,7 @@ impl TemplateApp {
         app.apply_auto_layout();
         app.save_trigger = save_trigger_clone;
         app.export_trigger = export_trigger_clone;
+        app.sync_trigger = sync_trigger_clone;
         app
     }
 
@@ -1255,6 +1264,7 @@ impl eframe::App for TemplateApp {
                     new_app.update_json = self.update_json.clone();
                     new_app.update_read_only = self.update_read_only.clone();
                     new_app.export_trigger = self.export_trigger.clone();
+                    new_app.sync_trigger = self.sync_trigger.clone();
                     new_app.read_only = self.read_only;
                     new_app.apply_auto_layout();
 
@@ -1280,6 +1290,17 @@ impl eframe::App for TemplateApp {
                 }
             }
         }
+        #[cfg(target_arch = "wasm32")]
+        if let Ok(mut sync_flag) = self.sync_trigger.lock() {
+            if *sync_flag {
+                *sync_flag = false; // Reseta a flag
+                match serde_json::to_string(self) {
+                    Ok(json_string) => openSyncModal(&json_string),
+                    Err(e) => tracing::error!("Erro ao gerar JSON para Sync: {}", e),
+                }
+            }
+        }
+
         CentralPanel::default().show(ctx, |ui| {
             let mut scene_transform =
                 ui.ctx()

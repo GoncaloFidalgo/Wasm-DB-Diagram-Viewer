@@ -46,6 +46,9 @@ export class WebHandle {
     trigger_save() {
         wasm.webhandle_trigger_save(this.__wbg_ptr);
     }
+    trigger_sync() {
+        wasm.webhandle_trigger_sync(this.__wbg_ptr);
+    }
 }
 if (Symbol.dispose) WebHandle.prototype[Symbol.dispose] = WebHandle.prototype.free;
 
@@ -932,6 +935,9 @@ function __wbg_get_imports() {
         __wbg_offsetTop_03ccc0dfd690579b: function(arg0) {
             const ret = arg0.offsetTop;
             return ret;
+        },
+        __wbg_openSyncModal_e0e75d41a8250469: function(arg0, arg1) {
+            window.openSyncModal(getStringFromWasm0(arg0, arg1));
         },
         __wbg_open_a3e83bb9ce5c4f9d: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
             const ret = arg0.open(getStringFromWasm0(arg1, arg2), getStringFromWasm0(arg3, arg4));

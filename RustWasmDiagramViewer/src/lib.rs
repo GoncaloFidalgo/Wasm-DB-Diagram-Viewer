@@ -12,6 +12,7 @@ mod wasm {
     #[wasm_bindgen(js_namespace = window)]
     extern "C" {
         fn saveDiagramState(json_data: &str);
+        fn openSyncModal(json_data: &str);
     }
 
     #[wasm_bindgen]
@@ -22,6 +23,7 @@ mod wasm {
         update_json: Arc<Mutex<Option<String>>>,
         update_read_only: Arc<Mutex<Option<bool>>>,
         export_trigger: Arc<Mutex<bool>>,
+        sync_trigger: Arc<Mutex<bool>>,
     }
 
     #[wasm_bindgen]
@@ -35,6 +37,7 @@ mod wasm {
                 update_json: Arc::new(Mutex::new(None)),
                 update_read_only: Arc::new(Mutex::new(None)),
                 export_trigger: Arc::new(Mutex::new(false)),
+                sync_trigger: Arc::new(Mutex::new(false)),
             }
         }
         #[wasm_bindgen]
@@ -50,6 +53,13 @@ mod wasm {
             }
         }
         #[wasm_bindgen]
+        pub fn trigger_sync(&self) {
+            if let Ok(mut flag) = self.sync_trigger.lock() {
+                *flag = true;
+            }
+        }
+
+        #[wasm_bindgen]
         pub async fn start(&self, canvas: web_sys::HtmlCanvasElement, read_only: bool) -> Result<(), wasm_bindgen::JsValue> {
             eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
@@ -59,6 +69,7 @@ mod wasm {
 
             let save_trigger_clone = Arc::clone(&self.save_trigger);
             let export_trigger_clone = Arc::clone(&self.export_trigger);
+            let sync_trigger_clone = Arc::clone(&self.sync_trigger);
 
             let update_json_clone = Arc::clone(&self.update_json);
             let update_read_only_clone = Arc::clone(&self.update_read_only);
@@ -77,6 +88,7 @@ mod wasm {
                             update_json_clone,
                             update_read_only_clone,
                             export_trigger_clone,
+                            sync_trigger_clone,
                         )))
                     }),
                 )
