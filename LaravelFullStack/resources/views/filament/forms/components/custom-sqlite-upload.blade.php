@@ -20,7 +20,7 @@
                 let ext = file.name.split('.').pop().toLowerCase();
                 if (ext !== 'sqlite' && ext !== 'db') {
                     new FilamentNotification()
-                        .title('Upload Bloqueado')
+                        .title('Ficheiro não permitido')
                         .body('Apenas ficheiros com extensão .sqlite ou .db são permitidos.')
                         .danger()
                         .send();
@@ -71,7 +71,7 @@
                 <x-heroicon-o-arrow-up-tray style="width: 36px; height: 36px; color: #9ca3af; margin-bottom: 0.75rem;" />
 
                 <p style="font-size: 0.875rem; color: #4b5563; margin: 0;">
-                    <span style="font-weight: 600; color: #3b82f6;">Clica para carregar</span> ou arrasta para aqui
+                    <span style="font-weight: 600; color: #3b82f6;">Escolhe um ficheiro</span> ou arrasta para aqui
                 </p>
                 <p style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.25rem;">Ficheiros .sqlite ou .db</p>
             </div>
