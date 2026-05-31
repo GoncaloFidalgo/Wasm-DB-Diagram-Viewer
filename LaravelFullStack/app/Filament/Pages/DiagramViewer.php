@@ -122,7 +122,10 @@ class DiagramViewer extends Page
 
                                                     return DiagramResource::getUrl('index');
                                                 })
-                                                ->visible(fn() => auth()->check()),
+                                                ->visible(fn() => auth()->check())
+                                                ->extraAttributes([
+                                                    'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Queres mesmo sair e perder o progresso?`)) { window.location.href = $el.href; } } else { window.location.href = $el.href; }'
+                                                ])
                                         ])->columnSpan(1),
 
                                         TextInput::make('diagramName')

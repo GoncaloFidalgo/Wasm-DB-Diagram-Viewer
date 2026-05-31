@@ -71,7 +71,7 @@
 @endphp
 <script type="module">
     window.wasmHandle = null;
-
+    window.hasUnsavedChanges = false;
     async function initWasm() {
         const loadingText = document.getElementById('loading_text');
         const canvas = document.getElementById('canvas_id');
@@ -99,7 +99,11 @@
             }
         }
     }
-
+    window.addEventListener('beforeunload', function (e) {
+        if (window.hasUnsavedChanges) {
+            e.preventDefault();
+        }
+    });
     window.addEventListener('trigger-rust-save', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_save();

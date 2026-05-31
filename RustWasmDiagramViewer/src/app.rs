@@ -126,6 +126,17 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
             }
         }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            let _ = js_sys::Reflect::set(
+                &window,
+                &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
+                &wasm_bindgen::JsValue::from_bool(true),
+            );
+        }
+    }
 }
 
 impl Default for TemplateApp {
@@ -1173,7 +1184,13 @@ impl eframe::App for TemplateApp {
         if let Ok(mut flag) = self.save_trigger.lock() {
             if *flag {
                 *flag = false; // Desliga a flag
-
+                if let Some(window) = web_sys::window() {
+                    let _ = js_sys::Reflect::set(
+                        &window,
+                        &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
+                        &wasm_bindgen::JsValue::from_bool(false),
+                    );
+                }
                 // Gera o JSON e envia para o Laravel
                 match serde_json::to_string(self) {
                     Ok(json_string) => {
@@ -1181,6 +1198,7 @@ impl eframe::App for TemplateApp {
                     }
                     Err(e) => tracing::error!("Erro: {}", e),
                 }
+
             }
         }
         #[cfg(target_arch = "wasm32")]
