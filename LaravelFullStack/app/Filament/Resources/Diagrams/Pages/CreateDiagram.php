@@ -85,32 +85,11 @@ BLADE
     public function processExtraction(): void
     {
         $state = $this->data;
-
+        $engine = $state['engine'] ?? 'sqlite';
         try {
             $extractor = new DatabaseExtractorService();
-            $tablesData = [];
-
-            if ($state['engine'] === 'sqlite') {
-                $filePathData = $state['filePath'] ?? null;
-                if (!$filePathData) throw new \Exception('Ficheiro SQLite não encontrado.');
-
-                $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
-                $absolutePath = '';
-
-                if ($fileItem instanceof TemporaryUploadedFile) {
-                    $absolutePath = $fileItem->getRealPath();
-                } elseif (is_string($fileItem)) {
-                    if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
-                        $absolutePath = $fileItem;
-                    } else {
-                        $absolutePath = Storage::disk('local')->path($fileItem);
-                    }
-                }
-
-                if (!file_exists($absolutePath)) {
-                    throw new \Exception("Ficheiro não encontrado: " . $absolutePath);
-                }
-
+            if ($engine === 'sqlite') {
+                $absolutePath = $extractor->resolveSqlitePath($state['filePath'] ?? null);
                 $tablesData = $extractor->extractTables($absolutePath, 'sqlite');
             } else {
                 $tablesData = $extractor->extractTables(null, 'mysql', $state);
@@ -119,22 +98,31 @@ BLADE
             $cleanTableNames = array_column($tablesData, 'name');
             $this->extractedTables = $cleanTableNames;
 
-            $engine = $state['engine'] ?? 'sqlite';
-            //$preSelectedTables = $extractor->getDefaultSelectedTables($cleanTableNames, $engine);
-
-            $this->data['selectedTables'] = $this->extractedTables;
-
-            //Notification::make()->title('Extração Concluída')->success()->send();
+            // Unselects Laravel system tables
+            $preSelectedTables = $extractor->getDefaultSelectedTables($cleanTableNames, $engine);
+            $this->data['selectedTables'] = $preSelectedTables;
 
         } catch (\Exception $e) {
-            //$e->getMessage()
+            $errorMessage = $e->getMessage();
+
+            $title = 'Erro Desconhecido';
+            if (str_starts_with($errorMessage, 0)) {
+                $title = 'Falha na ligação à base de dados';
+            } elseif (str_starts_with($errorMessage, 1)) {
+                $title = 'Falha na leitura das tabelas';
+            } elseif (str_contains($errorMessage, 'Ficheiro')) {
+                $title = 'Erro ao ler o ficheiro';
+            }
+
             Notification::make()
-                ->title('Erro ao extrair tabelas')
-                ->body('')
+                ->title($title)
+                //->body($errorMessage)
                 ->danger()
+                ->persistent()
                 ->send();
+
             throw ValidationException::withMessages([
-                'data.engine' => 'Falha na ligação/extração.',
+                'data.engine' => 'A operação falhou. Verifica a notificação para mais detalhes.',
             ]);
         }
     }
@@ -142,47 +130,52 @@ BLADE
     public function openDiagram()
     {
         $state = $this->form->getState();
-
-        $selectedTables = $state['selectedTables'];
+        $selectedTables = $state['selectedTables'] ?? [];
+        $engine = $state['engine'] ?? 'sqlite';
 
         $extractor = new DatabaseExtractorService();
         $finalJsonSchema = '';
-
-        if ($state['engine'] === 'sqlite') {
-            $filePathData = $state['filePath'] ?? null;
-            $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
-            $absolutePath = '';
-
-            if ($fileItem instanceof TemporaryUploadedFile) {
-                $absolutePath = $fileItem->getRealPath();
-            } elseif (is_string($fileItem)) {
-                if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
-                    $absolutePath = $fileItem;
-                } else {
-                    $absolutePath = Storage::disk('local')->path($fileItem);
-                }
+        try {
+            if ($engine === 'sqlite') {
+                $absolutePath = $extractor->resolveSqlitePath($state['filePath'] ?? null);
+                $finalJsonSchema = $extractor->buildDiagramSchema($absolutePath, $selectedTables, 'sqlite');
+            } else {
+                $finalJsonSchema = $extractor->buildDiagramSchema(null, $selectedTables, 'mysql', $state);
             }
 
-            if (!file_exists($absolutePath)) {
-                throw new \Exception("Ficheiro não encontrado no disco: " . $absolutePath);
+            $diagramId = Str::uuid()->toString();
+
+            Diagram::create([
+                'diagram_id' => $diagramId,
+                'diagram' => json_decode($finalJsonSchema, true) ?? ['tables' => [], 'relations' => []],
+                'name' => $state['name'] ?? 'Novo Diagrama',
+                'description' => $state['description'] ?? '',
+                'user_id' => auth()->id(),
+                'version' => 0,
+            ]);
+
+            return $this->redirect('/diagram/' . $diagramId, navigate: true);
+        } catch (\Exception $e) {
+            $errorMessage = $e->getMessage();
+
+            $title = 'Erro Desconhecido';
+            if (str_starts_with($errorMessage, 0)) {
+                $title = 'Falha na ligação à base de dados';
+            } elseif (str_starts_with($errorMessage, 1)) {
+                $title = 'Falha na leitura das tabelas';
+            } elseif (str_contains($errorMessage, 'Ficheiro')) {
+                $title = 'Erro ao ler o ficheiro';
             }
 
-            $finalJsonSchema = $extractor->buildDiagramSchema($absolutePath, $selectedTables, 'sqlite');
-        } else {
-            $finalJsonSchema = $extractor->buildDiagramSchema(null, $selectedTables, 'mysql', $state);
+            Notification::make()
+                ->title($title)
+                //->body($errorMessage)
+                ->danger()
+                ->persistent()
+                ->send();
+
+            throw $e;
+
         }
-
-        $diagramId = Str::uuid()->toString();
-
-        Diagram::create([
-            'diagram_id' => $diagramId,
-            'diagram' => json_decode($finalJsonSchema, true),
-            'name' => $state['name'] ?? 'Novo Diagrama',
-            'description' => $state['description'] ?? '',
-            'user_id' => auth()->id(),
-            'version' => 0,
-        ]);
-
-        return $this->redirect('/diagram/' . $diagramId, navigate: true);
     }
 }

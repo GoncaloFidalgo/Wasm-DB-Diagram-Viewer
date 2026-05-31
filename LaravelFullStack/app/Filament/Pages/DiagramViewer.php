@@ -3,8 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Actions\PublishDiagramAction;
+use App\Filament\Actions\SyncDiagramAction;
 use App\Filament\Resources\Diagrams\DiagramResource;
 use App\Filament\Resources\Diagrams\Pages\CreateDiagram;
+use App\Filament\Resources\Diagrams\Schemas\ExtractForm;
 use App\Models\Diagram;
 use App\Services\DatabaseExtractorService;
 use Filament\Actions\Action;
@@ -31,6 +33,7 @@ use Illuminate\Support\Facades\Cache;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\On;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
@@ -238,13 +241,7 @@ class DiagramViewer extends Page
                                         ->color('gray')
                                         ->button(),
 
-                                    Action::make('start_sync')
-                                        ->label('Sincronizar')
-                                        ->icon('heroicon-m-arrow-path')
-                                        ->color('info')
-                                        ->visible(fn() => !$this->isPublished)
-                                        ->action(fn() => $this->dispatch('trigger-rust-sync')),
-
+                                    SyncDiagramAction::make(),
 
                                     Action::make('save')
                                         ->label('Gravar')
@@ -288,40 +285,20 @@ class DiagramViewer extends Page
             ->success()
             ->send();
     }
-    public function processSyncExtraction(Get $get, Set $set): void
+    #[On('update-sync-json')]
+    public function handleUpdateSyncJson($jsonString)
     {
+        $this->currentDiagramJsonStr = $jsonString;
+    }
+    public function processSyncExtraction(Get $get, Set $set, $component): void
+    {
+        $engine = $get('engine');
         try {
             $extractor = new DatabaseExtractorService();
-            $tablesData = [];
-
-            // Ler o motor escolhido no modal através do $get
-            $engine = $get('engine');
-
             if ($engine === 'sqlite') {
-                $filePathData = $get('filePath');
-                if (!$filePathData) throw new \Exception('Ficheiro SQLite não encontrado.');
-
-                $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
-                $absolutePath = '';
-
-                if ($fileItem instanceof TemporaryUploadedFile) {
-                    $absolutePath = $fileItem->getRealPath();
-                }
-                elseif (is_string($fileItem)) {
-                    if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
-                        $absolutePath = $fileItem;
-                    } else {
-                        $absolutePath = Storage::disk('local')->path($fileItem);
-                    }
-                }
-
-                if (!file_exists($absolutePath)) {
-                    throw new \Exception("Ficheiro não encontrado no disco: " . $absolutePath);
-                }
-
+                $absolutePath = $extractor->resolveSqlitePath($get('filePath'));
                 $tablesData = $extractor->extractTables($absolutePath, 'sqlite');
             } else {
-                // Para o MySQL, construír o array de credenciais lendo da Modal
                 $mysqlState = [
                     'mysql_host' => $get('mysql_host'),
                     'mysql_port' => $get('mysql_port'),
@@ -332,32 +309,58 @@ class DiagramViewer extends Page
                 $tablesData = $extractor->extractTables(null, 'mysql', $mysqlState);
             }
 
-            // Extraír os nomes e guardar tudo no Livewire para o Merge posterior
+            // Extract table names only
             $cleanTableNames = array_column($tablesData, 'name');
             $this->extractedTables = $cleanTableNames;
+            // Save table and columns
             $this->fullExtractedData = $tablesData;
 
-            // Descobrir quais as tabelas que já estão no diagrama Wasm atual
+            // Discover which tables are already in the diagram
             $alreadyInDiagram = [];
             if (!empty($this->schemaJson)) {
                 $current = json_decode($this->schemaJson, true);
                 $alreadyInDiagram = array_column($current['tables'] ?? [], 'name');
             }
 
+            // Gets the tables that are in the diagram and in the extracted tables
+            // so that they can be pre-selected
+            $tablesToSelect = array_intersect($alreadyInDiagram, $cleanTableNames);
 
-            // tabelas que existiam no diagrama mas que entretanto foram apagadas da BD.
-            $preSelectedTables = array_intersect($alreadyInDiagram, $cleanTableNames);
-            // atualizar o select das tabelas
+            // Unselects Laravel system tables
+            $preSelectedTables = $extractor->getDefaultSelectedTables($tablesToSelect, $engine);
+
             $set('selectedTables', array_values($preSelectedTables));
 
-            Notification::make()->title('Extração Concluída')->success()->send();
-
         } catch (\Exception $e) {
-            Notification::make()
-                ->title('Erro ao extrair tabelas')
-                ->body($e->getMessage())
+            $errorMessage = $e->getMessage();
+            $title = 'Erro Desconhecido';
+
+            $formPrefix = $component->getContainer()->getStatePath();
+
+            $errorField = $formPrefix . '.engine';
+            $validationMessage = 'A operação falhou. Verifique a notificação para mais detalhes.';
+
+            if (str_starts_with($errorMessage, '0')) {
+                $title = 'Falha na ligação à base de dados';
+                $validationMessage = 'Verifique os dados de ligação e tente novamente.';
+            } elseif (str_starts_with($errorMessage, '1')) {
+                $title = 'Falha na leitura das tabelas';
+                $validationMessage = 'Ocorreu um erro ao ler o esquema da base de dados.';
+            } elseif (str_contains($errorMessage, 'Ficheiro')) {
+                $title = 'Erro ao ler o ficheiro';
+                $errorField = $formPrefix . '.filePath';
+                $validationMessage = 'Carregue um ficheiro .sqlite ou .db válido para prosseguir.';
+            }
+
+            \Filament\Notifications\Notification::make()
+                ->title($title)
                 ->danger()
+                ->persistent()
                 ->send();
+
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $errorField => $validationMessage,
+            ]);
         }
     }
     public function performSyncMerge(array $selectedTableNames, array $formData): void
@@ -415,34 +418,13 @@ class DiagramViewer extends Page
                 $oldSegmentsMap[$rel['name']] = $rel['relation_segments'];
             }
         }
+        $extractorService = new DatabaseExtractorService();
         $absolutePath = null;
 
         if (($formData['engine'] ?? 'sqlite') === 'sqlite') {
-            $filePathData = $formData['filePath'] ?? null;
-
-            if (!$filePathData) {
-                throw new \Exception('Ficheiro SQLite não encontrado.');
-            }
-
-            $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
-
-            if ($fileItem instanceof TemporaryUploadedFile) {
-                $absolutePath = $fileItem->getRealPath();
-            } elseif (is_string($fileItem)) {
-                // Verifica se já é um caminho absoluto (Windows ou Unix)
-                if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
-                    $absolutePath = $fileItem;
-                } else {
-                    $absolutePath = Storage::disk('local')->path($fileItem);
-                }
-            }
-
-            if (!$absolutePath || !file_exists($absolutePath)) {
-                throw new \Exception("Ficheiro não encontrado: " . $absolutePath);
-            }
+            $absolutePath = $extractorService->resolveSqlitePath($formData['filePath'] ?? null);
         }
 
-        $extractorService = new DatabaseExtractorService();
         $extractorService->setupConnection(
             $absolutePath,
             $formData['engine'] ?? 'sqlite',
@@ -459,7 +441,6 @@ class DiagramViewer extends Page
         $newRelations = [];
         foreach ($newTablesList as $table) {
             $tableName = $table['name'];
-
             $foreignKeys = $extractorService->fetchForeignKeys($tableName);
 
             foreach ($foreignKeys as $fk) {
@@ -471,7 +452,7 @@ class DiagramViewer extends Page
 
                 // Só cria a relação se ambas as tabelas estiverem presentes no novo diagrama
                 if (isset($fromTableIdx, $toTableIdx, $fromColIdx, $toColIdx)) {
-                    $relationName = "{$tableName}_{$fk->table}";
+                    $relationName = "{$tableName}_{$fk->from}_{$fk->table}";
 
                     // Se a relação já existia no diagrama antigo, recupera as linhas desenhadas.
                     // Se for uma relação totalmente nova, começa com um array vazio [].
@@ -500,73 +481,5 @@ class DiagramViewer extends Page
             isReadOnly: $this->isPublished
         );
         $this->dispatch('close-modal', id: 'sync-diagram-modal');
-    }
-
-    #[On('open-sync-modal')]
-    public function handleOpenSyncModal($jsonString)
-    {
-        $this->extractedTables = [];
-        if (property_exists($this, 'fullExtractedData')) {
-            $this->fullExtractedData = [];
-        }
-
-        $this->currentDiagramJsonStr = $jsonString;
-
-        $this->mountAction('sync');
-    }
-    public function syncAction(): Action
-    {
-        return Action::make('sync')
-            ->modalHeading('Sincronizar Base de Dados')
-            ->modalDescription('As novas tabelas serão adicionadas ao diagrama atual. As tabelas desmarcadas serão apagadas.')
-            ->modalSubmitActionLabel('Aplicar Sincronização')
-            ->schema([ // <-- VOLTOU PARA SCHEMA()!
-                Select::make('engine')
-                    ->label('Motor de Base de Dados')
-                    ->options([
-                        'sqlite' => 'SQLite',
-                        'mysql' => 'MySQL',
-                    ])
-                    ->default('sqlite')
-                    ->live()
-                    ->afterStateUpdated(fn ($livewire) => $livewire->extractedTables = []),
-
-                ViewField::make('filePath')
-                    ->label('Ficheiro SQLite (.sqlite, .db)')
-                    ->view('filament.forms.components.custom-sqlite-upload')
-                    ->visible(fn(Get $get) => $get('engine') === 'sqlite')
-                    ->live(),
-
-                Grid::make(2)
-                    ->visible(fn(Get $get) => $get('engine') === 'mysql')
-                    ->schema([
-                        TextInput::make('mysql_host')->label('Host')->default(''),
-                        TextInput::make('mysql_port')->label('Porta')->default(''),
-                        TextInput::make('mysql_database')->label('Base de Dados')->columnSpan(2),
-                        TextInput::make('mysql_username')->label('Utilizador'),
-                        TextInput::make('mysql_password')->label('Password')->password(),
-                    ]),
-
-                Actions::make([
-                    Action::make('extractForSync')
-                        ->label('Extrair Tabelas')
-                        ->action(fn ($livewire, Get $get, Set $set) => $livewire->processSyncExtraction($get, $set))
-                ])->fullWidth(),
-
-                Section::make('Tabelas Extraídas')
-                    ->visible(fn ($livewire) => !empty($livewire->extractedTables))
-                    ->schema([
-                        CheckboxList::make('selectedTables')
-                            ->hiddenLabel()
-                            ->options(fn($livewire) => empty($livewire->extractedTables) ? [] : array_combine($livewire->extractedTables, $livewire->extractedTables))
-                            ->columns(3)
-                            ->gridDirection('row')
-                            ->bulkToggleable()
-                            ->searchable()
-                    ]),
-            ])
-            ->action(function (array $data) {
-                $this->performSyncMerge($data['selectedTables'], $data);
-            });
     }
 }

@@ -131,10 +131,6 @@
             if (typeof window.wasmHandle.set_read_only === 'function') {
                 window.wasmHandle.set_read_only(isReadOnly);
             }
-
-            // Força o eframe (Rust) a desenhar um frame novo para atualizar o ecrã imediatamente
-            const canvas = document.getElementById('canvas_id');
-            if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
         }
     });
 
@@ -191,14 +187,11 @@
     window.addEventListener('trigger-rust-sync', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_sync();
-            const canvas = document.getElementById('canvas_id');
-            if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
         }
     });
 
-
     window.openSyncModal = function(jsonString) {
-        Livewire.dispatch('open-sync-modal', { jsonString: jsonString });
+        Livewire.dispatch('update-sync-json', { jsonString: jsonString });
     };
 
 </script>
