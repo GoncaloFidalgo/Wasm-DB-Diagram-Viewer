@@ -24,6 +24,7 @@ mod wasm {
         update_read_only: Arc<Mutex<Option<bool>>>,
         export_trigger: Arc<Mutex<bool>>,
         sync_trigger: Arc<Mutex<bool>>,
+        egui_ctx: Arc<Mutex<Option<egui::Context>>>,
     }
 
     #[wasm_bindgen]
@@ -38,6 +39,7 @@ mod wasm {
                 update_read_only: Arc::new(Mutex::new(None)),
                 export_trigger: Arc::new(Mutex::new(false)),
                 sync_trigger: Arc::new(Mutex::new(false)),
+                egui_ctx: Arc::new(Mutex::new(None)),
             }
         }
         #[wasm_bindgen]
@@ -72,6 +74,7 @@ mod wasm {
             let sync_trigger_clone = Arc::clone(&self.sync_trigger);
 
             let update_json_clone = Arc::clone(&self.update_json);
+            let ctx_clone = Arc::clone(&self.egui_ctx);
             let update_read_only_clone = Arc::clone(&self.update_read_only);
 
             self.runner
@@ -79,6 +82,10 @@ mod wasm {
                     canvas,
                     web_options,
                     Box::new(move |cc| {
+                        if let Ok(mut ctx_lock) = ctx_clone.lock() {
+                            *ctx_lock = Some(cc.egui_ctx.clone());
+                        }
+
                         let json_data = state_clone.lock().unwrap().clone();
                         Ok(Box::new(TemplateApp::new(
                             cc,
@@ -106,6 +113,12 @@ mod wasm {
             if let Ok(mut update) = self.update_json.lock() {
                 *update = Some(json_data.to_string());
             }
+            // Força a desenhar os novos dados
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
+            }
         }
         // Alterar valor do read_only
         #[wasm_bindgen]
@@ -113,6 +126,12 @@ mod wasm {
             // Coloca o read_only no update para ser atualizado na app que está a correr
             if let Ok(mut update) = self.update_read_only.lock() {
                 *update = Some(read_only);
+            }
+            // Força a desenhar os novos dados
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
             }
         }
 
