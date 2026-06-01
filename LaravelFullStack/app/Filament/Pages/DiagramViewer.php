@@ -20,6 +20,7 @@ use Filament\Forms\Components\ViewField;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Text;
@@ -106,123 +107,122 @@ class DiagramViewer extends Page
                 Section::make()
                     ->compact()
                     ->schema([
-                        Grid::make(4)
-                            ->schema([
-                                Grid::make(8)
-                                    ->schema([
-                                        Actions::make([
-                                            Action::make('back')
-                                                ->label('Diagramas')
-                                                ->icon('heroicon-m-arrow-left')
-                                                ->color('gray')
-                                                ->url(function () {
-                                                    if ($this->source === 'public') {
-                                                        return PublicDiagrams::getUrl();
-                                                    }
+                        Flex::make([
+                            Flex::make([
 
-                                                    return DiagramResource::getUrl('index');
-                                                })
-                                                ->visible(fn() => auth()->check())
-                                                ->extraAttributes([
-                                                    'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Quer mesmo sair e perder o progresso?`)) { window.hasUnsavedChanges = false; window.location.href = $el.href; } } else { window.location.href = $el.href; }'
-                                                ])
-                                        ])->columnSpan(1),
+                                    Action::make('back')
+                                        ->label('Diagramas')
+                                        ->icon('heroicon-m-arrow-left')
+                                        ->color('gray')
+                                        ->url(function () {
+                                            if ($this->source === 'public') {
+                                                return PublicDiagrams::getUrl();
+                                            }
 
-                                        TextInput::make('diagramName')
-                                            ->hiddenLabel()
-                                            ->disabled()
-                                            ->extraAttributes([
-                                                'style' => 'width: 100%; max-width: 200px;'
-                                            ])
-                                            ->columnSpan(3)
-                                            ->suffixActions([
-                                                EditDiagramMetadataAction::configure(
-                                                    Action::make('edit_metadata')->visible(fn () => !$this->isPublished)
-                                                ),
-                                            ]),
+                                            return DiagramResource::getUrl('index');
+                                        })
+                                        ->visible(fn() => auth()->check())
+                                        ->extraAttributes([
+                                            'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Quer mesmo sair e perder o progresso?`)) { window.hasUnsavedChanges = false; window.location.href = $el.href; } } else { window.location.href = $el.href; }'
+                                        ]),
 
-                                        Select::make('selectedVersionId')
-                                            ->hiddenLabel()
-                                            ->options(function () {
-                                                $query = Diagram::where('diagram_id', $this->diagramId)
-                                                    ->orderByDesc('version');
+                                TextInput::make('diagramName')
+                                    ->hiddenLabel()
+                                    ->disabled()
+                                    ->suffixActions([
+                                        EditDiagramMetadataAction::configure(
+                                            Action::make('edit_metadata')->visible(fn() => !$this->isPublished)
+                                        ),
+                                    ]),
+                            ])->alignStart()->grow()->gap(4)
+                                ,
 
-                                                if (!$this->isOwner) {
-                                                    $query->where('is_published', true);
-                                                }
+                            Flex::make([
+                                Select::make('selectedVersionId')
+                                    ->hiddenLabel()
+                                    ->extraAttributes([
+                                        'style' => 'min-width: 180px; max-width: 250px;'
+                                    ])
+                                    ->options(function () {
+                                        $query = Diagram::where('diagram_id', $this->diagramId)
+                                            ->orderByDesc('version');
 
-                                                return $query->get()->mapWithKeys(function ($d) {
-                                                    $label = 'Versão ' . $d->version;
-                                                    if ($d->is_published) $label .= ' (Publicada)';
-                                                    if ($d->id === $this->recordId) $label .= ' - Atual';
-                                                    return [$d->id => $label];
-                                                });
-                                            })
-                                            ->live()
-                                            ->afterStateUpdated(function ($state, DiagramViewer $livewire) {
-                                                $diagram = Diagram::find($state);
+                                        if (!$this->isOwner) {
+                                            $query->where('is_published', true);
+                                        }
 
-                                                $livewire->recordId = $diagram->id;
-                                                $livewire->diagramName = $diagram->name;
-                                                $livewire->isPublished = (bool)$diagram->is_published;
-                                                $livewire->schemaJson = json_encode($diagram->diagram);
+                                        return $query->get()->mapWithKeys(function ($d) {
+                                            $label = 'Versão ' . $d->version;
+                                            if ($d->is_published) $label .= ' (Publicada)';
+                                            if ($d->id === $this->recordId) $label .= ' - Atual';
+                                            return [$d->id => $label];
+                                        });
+                                    })
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, DiagramViewer $livewire) {
+                                        $diagram = Diagram::find($state);
 
-                                                // Dispara um evento para o browser apanhar e atualizar o Canvas Rust
-                                                $livewire->dispatch('reload-wasm-schema',
-                                                    schema: $livewire->schemaJson,
-                                                    isReadOnly: $livewire->isPublished
-                                                );
-                                            })->columnSpan(2),
+                                        $livewire->recordId = $diagram->id;
+                                        $livewire->diagramName = $diagram->name;
+                                        $livewire->isPublished = (bool)$diagram->is_published;
+                                        $livewire->schemaJson = json_encode($diagram->diagram);
 
-
-                                        Actions::make([
-                                            Action::make('newVersion')
-                                                ->label('Nova Versão')
-                                                ->icon('heroicon-m-document-plus')
-                                                ->color('primary')
-                                                ->action(function () {
-                                                    $maxVersion = Diagram::where('diagram_id', $this->diagramId)->max('version');
-                                                    $latest = Diagram::where('id', $this->recordId)->first();
-
-                                                    Diagram::create([
-                                                        'diagram_id' => $latest->diagram_id,
-                                                        'name' => $latest->name,
-                                                        'description' => $latest->description,
-                                                        'diagram' => $latest->diagram,
-                                                        'user_id' => $latest->user_id,
-                                                        'version' => $maxVersion + 1,
-                                                        'visibility' => 'link',
-                                                        'is_published' => false,
-                                                    ]);
-
-                                                    Notification::make()
-                                                        ->title('Nova versão criada!')
-                                                        ->body('')
-                                                        ->success()
-                                                        ->send();
-
-                                                    return redirect(request()->header('Referer'));
-                                                })
-                                                ->visible(function () {
-                                                    // 1. Se não for o dono ou a versão atual não estiver publicada, esconde.
-                                                    if (!$this->isOwner || !$this->isPublished) {
-                                                        return false;
-                                                    }
-
-                                                    // Verifica se já existe alguma versao ativo para este diagrama UUID
-                                                    $hasDraft = Diagram::where('diagram_id', $this->diagramId)
-                                                        ->where('is_published', false)
-                                                        ->exists();
-
-                                                    // Só mostra o botão se não houver versoes
-                                                    return !$hasDraft;
-                                                }),
-                                        ])->columnSpan(2),
-
-
-                                    ])->columnSpan(3),
+                                        // Dispara um evento para o browser apanhar e atualizar o Canvas Rust
+                                        $livewire->dispatch('reload-wasm-schema',
+                                            schema: $livewire->schemaJson,
+                                            isReadOnly: $livewire->isPublished
+                                        );
+                                    }),
 
                                 Actions::make([
+                                    Action::make('newVersion')
+                                        ->label('Nova Versão')
+                                        ->icon('heroicon-m-document-plus')
+                                        ->color('primary')
+                                        ->action(function () {
+                                            $maxVersion = Diagram::where('diagram_id', $this->diagramId)->max('version');
+                                            $latest = Diagram::where('id', $this->recordId)->first();
+
+                                            Diagram::create([
+                                                'diagram_id' => $latest->diagram_id,
+                                                'name' => $latest->name,
+                                                'description' => $latest->description,
+                                                'diagram' => $latest->diagram,
+                                                'user_id' => $latest->user_id,
+                                                'version' => $maxVersion + 1,
+                                                'visibility' => 'link',
+                                                'is_published' => false,
+                                            ]);
+
+                                            Notification::make()
+                                                ->title('Nova versão criada!')
+                                                ->body('')
+                                                ->success()
+                                                ->send();
+
+                                            return redirect(request()->header('Referer'));
+                                        })
+                                        ->visible(function () {
+                                            // 1. Se não for o dono ou a versão atual não estiver publicada, esconde.
+                                            if (!$this->isOwner || !$this->isPublished) {
+                                                return false;
+                                            }
+
+                                            // Verifica se já existe alguma versao ativo para este diagrama UUID
+                                            $hasDraft = Diagram::where('diagram_id', $this->diagramId)
+                                                ->where('is_published', false)
+                                                ->exists();
+
+                                            // Só mostra o botão se não houver versoes
+                                            return !$hasDraft;
+                                        }),
+                                ]),
+                            ])->alignBetween()->gap(4)->grow(),
+
+                            Flex::make([
+
+                                Actions::make([
+                                    SyncDiagramAction::make(),
                                     ActionGroup::make([
                                         Action::make('export_png')
                                             ->label('Exportar como PNG')
@@ -236,7 +236,6 @@ class DiagramViewer extends Page
                                         ->color('gray')
                                         ->button(),
 
-                                    SyncDiagramAction::make(),
 
                                     Action::make('save')
                                         ->label('Gravar')
@@ -249,10 +248,16 @@ class DiagramViewer extends Page
                                         ->visible(fn() => $this->isOwner),
 
                                 ])
-                                    ->alignEnd()
-                                    ->columnStart(4),
-                            ]),
+                                    ->alignEnd(),
+                            ])
 
+                        ])
+                            ->alignBetween()
+                            ->gap(4)->grow()
+                            ->extraAttributes([
+                                'class' => 'custom-toolbar',
+                                'style' => 'flex-wrap: wrap !important; width: 100%;'
+                            ]),
                     ]),
 
                 View::make('filament.resources.diagrams.pages.canvas'),
@@ -280,11 +285,13 @@ class DiagramViewer extends Page
             ->success()
             ->send();
     }
+
     #[On('update-sync-json')]
     public function handleUpdateSyncJson($jsonString)
     {
         $this->currentDiagramJsonStr = $jsonString;
     }
+
     public function processSyncExtraction(Get $get, Set $set, $component): void
     {
         $engine = $get('engine');
@@ -358,6 +365,7 @@ class DiagramViewer extends Page
             ]);
         }
     }
+
     public function performSyncMerge(array $selectedTableNames, array $formData): void
     {
         $currentDiagram = json_decode($this->currentDiagramJsonStr, true);
@@ -440,10 +448,10 @@ class DiagramViewer extends Page
 
             foreach ($foreignKeys as $fk) {
                 $fromTableIdx = $tableIndices[$tableName];
-                $toTableIdx   = $tableIndices[$fk->table] ?? null;
+                $toTableIdx = $tableIndices[$fk->table] ?? null;
 
                 $fromColIdx = $columnIndices[$tableName][$fk->from] ?? null;
-                $toColIdx   = $columnIndices[$fk->table][$fk->to] ?? null;
+                $toColIdx = $columnIndices[$fk->table][$fk->to] ?? null;
 
                 // Só cria a relação se ambas as tabelas estiverem presentes no novo diagrama
                 if (isset($fromTableIdx, $toTableIdx, $fromColIdx, $toColIdx)) {

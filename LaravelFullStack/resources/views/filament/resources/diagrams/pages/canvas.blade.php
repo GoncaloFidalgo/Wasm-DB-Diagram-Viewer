@@ -48,7 +48,13 @@
         width: 100%;
         z-index: 10;
     }
-
+    @media (max-width: 1023px) {
+        .custom-toolbar > div {
+            flex-basis: 100% !important;
+            max-width: 100% !important;
+            margin-bottom: 1rem;
+        }
+    }
 
 </style>
 
