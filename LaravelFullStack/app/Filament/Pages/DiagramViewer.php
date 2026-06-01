@@ -124,7 +124,7 @@ class DiagramViewer extends Page
                                                 })
                                                 ->visible(fn() => auth()->check())
                                                 ->extraAttributes([
-                                                    'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Queres mesmo sair e perder o progresso?`)) { window.location.href = $el.href; } } else { window.location.href = $el.href; }'
+                                                    'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Quer mesmo sair e perder o progresso?`)) { window.hasUnsavedChanges = false; window.location.href = $el.href; } } else { window.location.href = $el.href; }'
                                                 ])
                                         ])->columnSpan(1),
 

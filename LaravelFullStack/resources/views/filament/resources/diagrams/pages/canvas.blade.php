@@ -1,12 +1,21 @@
 <style>
-    .fi-page-header-main-ctn { padding-block: 0 !important; }
-    header.fi-page-header { display: none !important; }
-    .fi-main { padding-top: 0 !important; }
+    .fi-page-header-main-ctn {
+        padding-block: 0 !important;
+    }
+
+    header.fi-page-header {
+        display: none !important;
+    }
+
+    .fi-main {
+        padding-top: 0 !important;
+    }
 
     html {
         /* Remove touch delay: */
         touch-action: manipulation;
     }
+
     #canvas_id {
         /*position: absolute ;*/
         /*top: 0 ;*/
@@ -52,8 +61,10 @@
         class="block outline-none"
     />
 
-    <div id="loading_text" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-20">
-        <div class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gray-900/50 backdrop-blur-md border border-white/10 shadow-2xl">
+    <div id="loading_text"
+         class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-20">
+        <div
+            class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gray-900/50 backdrop-blur-md border border-white/10 shadow-2xl">
             <p class="text-sm font-medium text-white tracking-wide">A carregar diagrama...</p>
             <div class="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin"></div>
         </div>
@@ -72,6 +83,7 @@
 <script type="module">
     window.wasmHandle = null;
     window.hasUnsavedChanges = false;
+
     async function initWasm() {
         const loadingText = document.getElementById('loading_text');
         const canvas = document.getElementById('canvas_id');
@@ -99,9 +111,11 @@
             }
         }
     }
+
     window.addEventListener('beforeunload', function (e) {
         if (window.hasUnsavedChanges) {
             e.preventDefault();
+            e.returnValue = true;
         }
     });
     window.addEventListener('trigger-rust-save', () => {
@@ -109,18 +123,18 @@
             window.wasmHandle.trigger_save();
             // Simula um movimento do rato para acordar o eframe caso esteja parado
             const canvas = document.getElementById('canvas_id');
-            if(canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
+            if (canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
         }
     });
 
-    document.addEventListener('livewire:navigated', initWasm, { once: true });
+    document.addEventListener('livewire:navigated', initWasm, {once: true});
 
     if (document.readyState === 'complete') {
         initWasm();
     }
 
-    window.saveDiagramState = function(jsonString) {
-        Livewire.dispatch('save-diagram', { jsonPayload: jsonString });
+    window.saveDiagramState = function (jsonString) {
+        Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
     };
 
     window.addEventListener('reload-wasm-schema', (event) => {
@@ -138,7 +152,7 @@
         }
     });
 
-    window.savePixelsAsPng = function(width, height, pixelsArray) {
+    window.savePixelsAsPng = function (width, height, pixelsArray) {
         if (!pixelsArray || pixelsArray.length === 0) {
             console.error("Erro: O Rust enviou um array de pixels vazio.");
             return;
@@ -156,7 +170,7 @@
 
         try {
             // Tenta usar Blob (Mais rápido e consome menos memória)
-            canvas.toBlob(function(blob) {
+            canvas.toBlob(function (blob) {
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.download = '{{ $this->diagramName }}.png';
@@ -194,8 +208,8 @@
         }
     });
 
-    window.openSyncModal = function(jsonString) {
-        Livewire.dispatch('update-sync-json', { jsonString: jsonString });
+    window.openSyncModal = function (jsonString) {
+        Livewire.dispatch('update-sync-json', {jsonString: jsonString});
     };
 
 </script>
