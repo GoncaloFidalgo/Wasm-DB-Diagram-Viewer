@@ -140,12 +140,14 @@ class DiagramViewer extends Page
                             Flex::make([
                                 Select::make('selectedVersionId')
                                     ->hiddenLabel()
+                                    ->selectablePlaceholder(false)
                                     ->extraAttributes([
                                         'style' => 'min-width: 180px; max-width: 250px;'
                                     ])
                                     ->extraInputAttributes([
-                                        'x-data' => 'versionDropdown',
-                                        'x-on:change.capture' => 'handleVersionChange($event)',
+                                        'x-data' => '{ previousValue: null }',
+                                        'x-init' => 'previousValue = $el.value',
+                                        'x-on:change.capture' => 'previousValue = window.handleVersionChange($event, $el, previousValue)'
                                     ])
                                     ->options(function () {
                                         $query = Diagram::where('diagram_id', $this->diagramId)
@@ -393,11 +395,10 @@ class DiagramViewer extends Page
             if (in_array($table['name'], $selectedTableNames)) {
                 $newIndex = count($newTablesList);
 
-                // A MÁGICA ACONTECE AQUI: Atualizar as colunas com a nova estrutura!
                 if (isset($extractedTablesMap[$table['name']])) {
                     $freshColumns = $extractedTablesMap[$table['name']]['columns'];
 
-                    // Mapear as colunas antigas para não perdermos as descrições
+                    // Mapear as colunas antigas para não perder as descrições
                     $oldColumnsMap = [];
                     foreach ($table['columns'] as $oldCol) {
                         $oldColumnsMap[$oldCol['name']] = $oldCol;
@@ -405,18 +406,18 @@ class DiagramViewer extends Page
 
                     $mergedColumns = [];
                     foreach ($freshColumns as $freshCol) {
-                        // Se a coluna já existia, preservamos a descrição antiga
+                        // Se a coluna já existia, preserva a descrição antiga
                         if (isset($oldColumnsMap[$freshCol['name']])) {
                             $freshCol['description'] = $oldColumnsMap[$freshCol['name']]['description'] ?? $freshCol['description'];
                         }
                         $mergedColumns[] = $freshCol;
                     }
 
-                    // Substitui as colunas velhas da tabela pelas colunas fresquinhas da BD
+                    // Substitui as colunas velhas da tabela pelas colunas da DB
                     $table['columns'] = $mergedColumns;
                 }
 
-                $newTablesList[] = $table; // Agora sim, a tabela vai com as colunas atualizadas!
+                $newTablesList[] = $table;
                 $indexMapping[$oldIndex] = $newIndex;
             } else {
                 $indexMapping[$oldIndex] = null; // Tabela foi apagada
