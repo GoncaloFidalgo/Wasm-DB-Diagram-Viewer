@@ -48,8 +48,17 @@
         width: 100%;
         z-index: 10;
     }
-
-
+    @media (max-width: 1023px) {
+        .custom-toolbar > div {
+            flex-basis: 100% !important;
+            max-width: 100% !important;
+            margin-bottom: 1rem;
+        }
+    }
+    @keyframes loader-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
 </style>
 
 <div id="wasm-container" class="bg-gray-50 dark:bg-gray-950" wire:ignore>
@@ -62,11 +71,16 @@
     />
 
     <div id="loading_text"
-         class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-20">
-        <div
-            class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gray-900/50 backdrop-blur-md border border-white/10 shadow-2xl">
-            <p class="text-sm font-medium text-white tracking-wide">A carregar diagrama...</p>
-            <div class="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin"></div>
+         style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; background-color: rgba(17, 24, 39, 0.7); backdrop-filter: blur(4px); align-items: center; justify-content: center; flex-direction: column;">
+
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2rem; border-radius: 1rem; background-color: rgba(31, 41, 55, 0.95); box-shadow: 0 0 50px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);">
+
+            <div style="width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 4px solid rgba(255,255,255,0.1); border-top-color: #3b82f6; animation: loader-spin 1s linear infinite;"></div>
+
+            <p style="font-size: 0.875rem; font-weight: 600; color: white; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; font-family: sans-serif;">
+                A carregar diagrama...
+            </p>
+
         </div>
     </div>
 
@@ -77,12 +91,55 @@
 
     $jsVersion = file_exists($jsPath) ? filemtime($jsPath) : time();
     $wasmVersion = file_exists($wasmPath) ? filemtime($wasmPath) : time();
-
-
 @endphp
+<script>
+    window.hasUnsavedChanges = false;
+    window.showCanvasLoader = function() {
+        console.log("A mostrar o loader...");
+        const loader = document.getElementById('loading_text');
+
+        if (loader) {
+            if (loader.parentNode !== document.body) {
+                document.body.appendChild(loader);
+            }
+
+            loader.style.setProperty('display', 'flex', 'important');
+            loader.style.setProperty('z-index', '999999', 'important');
+        }
+    };
+
+    window.hideCanvasLoader = function() {
+        console.log("A esconder o loader...");
+        const loader = document.getElementById('loading_text');
+        if (loader) {
+            loader.style.setProperty('display', 'none', 'important');
+        }
+    };
+
+    window.handleVersionChange = function(event, element, previousValue) {
+        console.log("Dropdown alterado!", previousValue, "->", element.value);
+
+        if (window.hasUnsavedChanges) {
+            if (!confirm(`Tem alterações não guardadas. Quer mesmo mudar de versão e perder o progresso?`)) {
+                event.stopImmediatePropagation();
+                event.preventDefault();
+                element.value = previousValue;
+                return previousValue;
+            }
+        }
+
+        window.hasUnsavedChanges = false;
+
+        if (typeof window.showCanvasLoader === "function") {
+            window.showCanvasLoader();
+        }
+
+        return element.value;
+    };
+
+</script>
 <script type="module">
     window.wasmHandle = null;
-    window.hasUnsavedChanges = false;
 
     async function initWasm() {
         const loadingText = document.getElementById('loading_text');
@@ -90,7 +147,7 @@
         const isReadOnly = canvas.dataset.readonly === 'true';
 
         try {
-
+            window.showCanvasLoader()
             // Estas duas linhas são para forçar a atualização do ficheiro wasm para nao usar o que está na cache quando o wasm é atualizado
             // Força o download do novo ficheiro JS
             const wasm = await import('/wasm/rust_wasm_diagram_viewer.js?v={{ $jsVersion }}');
@@ -101,7 +158,7 @@
             window.wasmHandle = new wasm.WebHandle();
             window.wasmHandle.load_data(canvas.dataset.schema);
 
-            if (loadingText) loadingText.style.display = 'none';
+            window.hideCanvasLoader()
 
             window.wasmHandle.start(canvas, isReadOnly).catch(console.error);
         } catch (error) {
@@ -111,7 +168,6 @@
             }
         }
     }
-
     window.addEventListener('beforeunload', function (e) {
         if (window.hasUnsavedChanges) {
             e.preventDefault();
@@ -136,12 +192,10 @@
     window.saveDiagramState = function (jsonString) {
         Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
     };
-
     window.addEventListener('reload-wasm-schema', (event) => {
         if (window.wasmHandle) {
             const schema = event.detail.schema;
             const isReadOnly = event.detail.isReadOnly;
-
             // Carrega o novo JSON do diagrama
             window.wasmHandle.load_data(schema);
 
@@ -149,6 +203,11 @@
             if (typeof window.wasmHandle.set_read_only === 'function') {
                 window.wasmHandle.set_read_only(isReadOnly);
             }
+
+            window.hasUnsavedChanges = event.detail.hasUnsavedChanges ?? false;
+        }
+        if (typeof window.hideCanvasLoader === 'function') {
+            window.hideCanvasLoader();
         }
     });
 
@@ -211,5 +270,4 @@
     window.openSyncModal = function (jsonString) {
         Livewire.dispatch('update-sync-json', {jsonString: jsonString});
     };
-
 </script>
