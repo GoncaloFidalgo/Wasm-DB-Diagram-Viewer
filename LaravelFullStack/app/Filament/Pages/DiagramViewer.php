@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Actions\EditDiagramMetadataAction;
 use App\Filament\Actions\PublishDiagramAction;
 use App\Filament\Actions\SyncDiagramAction;
 use App\Filament\Resources\Diagrams\DiagramResource;
@@ -121,30 +122,24 @@ class DiagramViewer extends Page
 
                                                     return DiagramResource::getUrl('index');
                                                 })
-                                                ->visible(fn() => auth()->check()),
+                                                ->visible(fn() => auth()->check())
+                                                ->extraAttributes([
+                                                    'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Quer mesmo sair e perder o progresso?`)) { window.hasUnsavedChanges = false; window.location.href = $el.href; } } else { window.location.href = $el.href; }'
+                                                ])
                                         ])->columnSpan(1),
 
                                         TextInput::make('diagramName')
-                                            ->disabled($this->isPublished)
                                             ->hiddenLabel()
-                                            ->suffixIcon('heroicon-m-pencil')
-                                            ->live(onBlur: true)
-                                            ->afterStateUpdated(function ($state) {
-                                                if ($this->isPublished) return;
-                                                if (!empty(trim($state))) {
-                                                    Diagram::where('id', $this->recordId)->update([
-                                                        'name' => $state,
-                                                    ]);
-
-                                                    Notification::make()
-                                                        ->title('Nome guardado!')
-                                                        ->success()
-                                                        ->send();
-                                                }
-                                            })
+                                            ->disabled()
                                             ->extraAttributes([
-                                                'style' => 'margin: 0 auto; width: 100%; max-width: 400px;'
-                                            ])->columnSpan(3),
+                                                'style' => 'width: 100%; max-width: 200px;'
+                                            ])
+                                            ->columnSpan(3)
+                                            ->suffixActions([
+                                                EditDiagramMetadataAction::configure(
+                                                    Action::make('edit_metadata')->visible(fn () => !$this->isPublished)
+                                                ),
+                                            ]),
 
                                         Select::make('selectedVersionId')
                                             ->hiddenLabel()

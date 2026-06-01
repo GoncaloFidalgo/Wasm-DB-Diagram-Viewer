@@ -51,7 +51,7 @@ pub enum Selected {
     Table { table: usize, column: Option<usize> },
     Relation { relation: usize, segment: Option<usize> },
 }
-fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize) {
+fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize, read_only: bool) {
     match item {
         Selected::Relation { relation, segment } => {
             let rela_idx = relation;
@@ -124,6 +124,17 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
                 selected.push(item);
 
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() && !read_only {
+            let _ = js_sys::Reflect::set(
+                &window,
+                &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
+                &wasm_bindgen::JsValue::from_bool(true),
+            );
         }
     }
 }
@@ -430,16 +441,16 @@ impl Table {
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
                             if self.header_ui(ui, table_width).clicked() {
                                 if !ctx.input(|i| {i.modifiers.command_only()}) {selected.clear();}
-                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                             }
                             ui.add_space(2.0);
                             for (col_idx, column) in self.columns.iter().enumerate() {
                                 if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}).clicked()  {
                                     if !ctx.input(|i| {i.modifiers.command_only()}) {
                                         selected.clear();
-                                        toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0);
+                                        toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0, read_only);
                                     } else {
-                                        toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                        toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                                     }
                                 }
                             }
@@ -449,7 +460,7 @@ impl Table {
 
                             if area_response.clicked() {
                                 if !ctx.input(|i| {i.modifiers.command_only()}) {selected.clear();}
-                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                             }
                     if !read_only {
                             if area_response.drag_started() {
@@ -464,10 +475,10 @@ impl Table {
                                 let item = Selected::Table { table: id, column: None };
                                 if !selected.contains(&item) {
                                     if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
-                                    toggle_selected(selected, item, 0);
+                                    toggle_selected(selected, item, 0, read_only);
                                 } else {
-                                    toggle_selected(selected, item, 0);
-                                    toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                    toggle_selected(selected, item, 0, read_only);
+                                    toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                                 }
                             }
                             if area_response.dragged() {
@@ -885,14 +896,19 @@ impl TemplateApp {
             let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
             let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
-            popup_relation_create(&rel_first_response, popup_first_id, relation, self.read_only, &mut self.selected);
             let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
-            popup_relation_create(&rel_second_response, popup_second_id, relation, self.read_only, &mut self.selected);
-            if !self.read_only {
+            if !self.read_only
+            {
+                popup_relation_create(&rel_first_response, popup_first_id, relation, &mut self.selected);
+                popup_relation_create(&rel_second_response, popup_second_id, relation,  &mut self.selected);
+            }
+
+
                 if rel_first_response.clicked() || rel_second_response.clicked() {
                     if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                    toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len());
+                    toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
                 }
+            if !self.read_only {
                 if !front_line && rel_first_response.secondary_clicked() {
                     self.selected.clear();
                     if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
@@ -900,7 +916,8 @@ impl TemplateApp {
                     let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
                     relation.relation_segments.insert(0, mid);
                     relation.relation_segments.insert(1, next);
-                    Popup::open_id(ui.ctx(), popup_first_id);
+                  Popup::open_id(ui.ctx(), popup_first_id);
+
                 }
                 if rel_second_response.secondary_clicked() {
                     self.selected.clear();
@@ -920,7 +937,8 @@ impl TemplateApp {
                         relation.relation_segments.push(next);
                         relation.relation_segments.push(mid);
                     }
-                    Popup::open_id(ui.ctx(), popup_second_id);
+                     Popup::open_id(ui.ctx(), popup_second_id);
+
                 }
             }
 
@@ -940,22 +958,25 @@ impl TemplateApp {
 
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
-                popup_relation_create(&seg_response, popup_id, relation, self.read_only, &mut self.selected);
 
-                if !self.read_only {
+
+
                     if seg_response.clicked() {
                         if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
+                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
                     }
+                if !self.read_only {
+                    popup_relation_create(&seg_response, popup_id, relation, &mut self.selected);
+
                     if seg_response.drag_started() {
                         let item_seg = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
                         let item_rela = Selected::Relation { relation: rela_idx, segment: None };
                         if !self.selected.contains(&item_seg) && !self.selected.contains(&item_rela) {
                             if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
+                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len(), self.read_only);
                         } else {
-                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
-                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
+                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len(),self.read_only);
+                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
                         }
                     }
 
@@ -1008,7 +1029,7 @@ impl TemplateApp {
                         let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
                         let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
 
-                        popup_relation_create(&pt_response, pt_popup_id, relation, self.read_only, &mut self.selected);
+                        popup_relation_create(&pt_response, pt_popup_id, relation,&mut self.selected);
 
                         if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
                             let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
@@ -1115,9 +1136,9 @@ fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line
     }
 }
 
-fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, read_only: bool, selected: &mut Vec<Selected>) {
+fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, selected: &mut Vec<Selected>) {
     Popup::menu(seg_response).id(popup_id).show(|ui| {
-        if !read_only && ui.button("⟳ Reset").clicked() {
+        if ui.button("⟳ Reset").clicked() {
             relation.relation_segments.clear();
             selected.clear();
         }
@@ -1173,7 +1194,13 @@ impl eframe::App for TemplateApp {
         if let Ok(mut flag) = self.save_trigger.lock() {
             if *flag {
                 *flag = false; // Desliga a flag
-
+                if let Some(window) = web_sys::window() {
+                    let _ = js_sys::Reflect::set(
+                        &window,
+                        &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
+                        &wasm_bindgen::JsValue::from_bool(false),
+                    );
+                }
                 // Gera o JSON e envia para o Laravel
                 match serde_json::to_string(self) {
                     Ok(json_string) => {
@@ -1181,6 +1208,7 @@ impl eframe::App for TemplateApp {
                     }
                     Err(e) => tracing::error!("Erro: {}", e),
                 }
+
             }
         }
         #[cfg(target_arch = "wasm32")]
