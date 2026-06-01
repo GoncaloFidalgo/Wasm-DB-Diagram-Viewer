@@ -110,21 +110,21 @@ class DiagramViewer extends Page
                         Flex::make([
                             Flex::make([
 
-                                    Action::make('back')
-                                        ->label('Diagramas')
-                                        ->icon('heroicon-m-arrow-left')
-                                        ->color('gray')
-                                        ->url(function () {
-                                            if ($this->source === 'public') {
-                                                return PublicDiagrams::getUrl();
-                                            }
+                                Action::make('back')
+                                    ->label('Diagramas')
+                                    ->icon('heroicon-m-arrow-left')
+                                    ->color('gray')
+                                    ->url(function () {
+                                        if ($this->source === 'public') {
+                                            return PublicDiagrams::getUrl();
+                                        }
 
-                                            return DiagramResource::getUrl('index');
-                                        })
-                                        ->visible(fn() => auth()->check())
-                                        ->extraAttributes([
-                                            'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Quer mesmo sair e perder o progresso?`)) { window.hasUnsavedChanges = false; window.location.href = $el.href; } } else { window.location.href = $el.href; }'
-                                        ]),
+                                        return DiagramResource::getUrl('index');
+                                    })
+                                    ->visible(fn() => auth()->check())
+                                    ->extraAttributes([
+                                        'x-on:click.prevent' => 'if (window.hasUnsavedChanges) { if (confirm(`Tem alterações não guardadas. Quer mesmo sair e perder o progresso?`)) { window.hasUnsavedChanges = false; window.location.href = $el.href; } } else { window.location.href = $el.href; }'
+                                    ]),
 
                                 TextInput::make('diagramName')
                                     ->hiddenLabel()
@@ -135,13 +135,17 @@ class DiagramViewer extends Page
                                         ),
                                     ]),
                             ])->alignStart()->grow()->gap(4)
-                                ,
+                            ,
 
                             Flex::make([
                                 Select::make('selectedVersionId')
                                     ->hiddenLabel()
                                     ->extraAttributes([
                                         'style' => 'min-width: 180px; max-width: 250px;'
+                                    ])
+                                    ->extraInputAttributes([
+                                        'x-data' => 'versionDropdown',
+                                        'x-on:change.capture' => 'handleVersionChange($event)',
                                     ])
                                     ->options(function () {
                                         $query = Diagram::where('diagram_id', $this->diagramId)
@@ -153,8 +157,8 @@ class DiagramViewer extends Page
 
                                         return $query->get()->mapWithKeys(function ($d) {
                                             $label = 'Versão ' . $d->version;
-                                            if ($d->is_published) $label .= ' (Publicada)';
-                                            if ($d->id === $this->recordId) $label .= ' - Atual';
+                                            //if ($d->is_published) $label .= ' (Publicada)';
+                                            //if ($d->id === $this->recordId) $label .= ' - Atual';
                                             return [$d->id => $label];
                                         });
                                     })
@@ -170,7 +174,8 @@ class DiagramViewer extends Page
                                         // Dispara um evento para o browser apanhar e atualizar o Canvas Rust
                                         $livewire->dispatch('reload-wasm-schema',
                                             schema: $livewire->schemaJson,
-                                            isReadOnly: $livewire->isPublished
+                                            isReadOnly: $livewire->isPublished,
+                                            hasUnsavedChanges: false
                                         );
                                     }),
 
@@ -380,13 +385,39 @@ class DiagramViewer extends Page
         $newTablesList = [];
         $indexMapping = [];
 
-        // Percorrer as tabelas atuais no diagrama e comparar com as tabelas selecionadas
-        // para filtrar tabelas existentes (Manter posições e descrições) e remover tabelas que extavam no diagrama mas que não estão selecionadas
+        $extractedTablesMap = [];
+        foreach ($this->fullExtractedData as $extractedTable) {
+            $extractedTablesMap[$extractedTable['name']] = $extractedTable;
+        }
         foreach ($oldTables as $oldIndex => $table) {
             if (in_array($table['name'], $selectedTableNames)) {
                 $newIndex = count($newTablesList);
-                $newTablesList[] = $table;
-                $indexMapping[$oldIndex] = $newIndex; // Ex: A tabela 3 passou a ser a tabela 2
+
+                // A MÁGICA ACONTECE AQUI: Atualizar as colunas com a nova estrutura!
+                if (isset($extractedTablesMap[$table['name']])) {
+                    $freshColumns = $extractedTablesMap[$table['name']]['columns'];
+
+                    // Mapear as colunas antigas para não perdermos as descrições
+                    $oldColumnsMap = [];
+                    foreach ($table['columns'] as $oldCol) {
+                        $oldColumnsMap[$oldCol['name']] = $oldCol;
+                    }
+
+                    $mergedColumns = [];
+                    foreach ($freshColumns as $freshCol) {
+                        // Se a coluna já existia, preservamos a descrição antiga
+                        if (isset($oldColumnsMap[$freshCol['name']])) {
+                            $freshCol['description'] = $oldColumnsMap[$freshCol['name']]['description'] ?? $freshCol['description'];
+                        }
+                        $mergedColumns[] = $freshCol;
+                    }
+
+                    // Substitui as colunas velhas da tabela pelas colunas fresquinhas da BD
+                    $table['columns'] = $mergedColumns;
+                }
+
+                $newTablesList[] = $table; // Agora sim, a tabela vai com as colunas atualizadas!
+                $indexMapping[$oldIndex] = $newIndex;
             } else {
                 $indexMapping[$oldIndex] = null; // Tabela foi apagada
             }
@@ -481,8 +512,9 @@ class DiagramViewer extends Page
         // Enviar para o browser reconstruir o Rust
         $this->dispatch('reload-wasm-schema',
             schema: $updatedJsonStr,
-            isReadOnly: $this->isPublished
+            isReadOnly: $this->isPublished,
+            hasUnsavedChanges: true
         );
-        $this->dispatch('close-modal', id: 'sync-diagram-modal');
+        //$this->dispatch('close-modal', id: 'sync-diagram-modal');
     }
 }

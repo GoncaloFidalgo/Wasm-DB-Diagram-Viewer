@@ -147,7 +147,6 @@
         if (window.wasmHandle) {
             const schema = event.detail.schema;
             const isReadOnly = event.detail.isReadOnly;
-
             // Carrega o novo JSON do diagrama
             window.wasmHandle.load_data(schema);
 
@@ -155,6 +154,8 @@
             if (typeof window.wasmHandle.set_read_only === 'function') {
                 window.wasmHandle.set_read_only(isReadOnly);
             }
+
+            window.hasUnsavedChanges = event.detail.hasUnsavedChanges ?? false;
         }
     });
 
@@ -217,5 +218,27 @@
     window.openSyncModal = function (jsonString) {
         Livewire.dispatch('update-sync-json', {jsonString: jsonString});
     };
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('versionDropdown', () => ({
+            previousValue: '',
+            init() {
+                this.previousValue = this.$el.value;
+            },
 
+            handleVersionChange(event) {
+                if (window.hasUnsavedChanges) {
+                    if (!confirm(`Tem alterações não guardadas. Quer mesmo mudar de versão e perder o progresso?`)) {
+                        event.stopImmediatePropagation();
+                        event.preventDefault();
+
+                        this.$el.value = this.previousValue;
+                        return;
+                    }
+                }
+                
+                window.hasUnsavedChanges = false;
+                this.previousValue = this.$el.value;
+            }
+        }));
+    });
 </script>
