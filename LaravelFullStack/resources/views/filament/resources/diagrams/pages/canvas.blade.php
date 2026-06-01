@@ -15,20 +15,10 @@
         /* Remove touch delay: */
         touch-action: manipulation;
     }
-
+    .fi-main-ctn {
+        padding-top: 0 !important;
+    }
     #canvas_id {
-        /*position: absolute ;*/
-        /*top: 0 ;*/
-        /*left: 0 ;*/
-        /*right: 0 ;*/
-        /*bottom: 0 ;*/
-        /*width: 100% ;*/
-        /*height: 100% ;*/
-        /*max-width: 100% ;*/
-        /*max-height: 100% ;*/
-        /*margin: 0 ;*/
-        /*padding: 0 ;*/
-
         margin-right: auto;
         margin-left: auto;
         display: block;
@@ -37,6 +27,7 @@
         left: 0;
         width: 100%;
         height: 100%;
+
     }
 
     #wasm-container {
@@ -45,8 +36,9 @@
         margin: 0 !important;
         padding: 0 !important;
         height: 90vh;
-        width: 100%;
+        width: 100% !important;
         z-index: 10;
+        top: -20px;
     }
     @media (max-width: 1023px) {
         .custom-toolbar > div {
@@ -59,6 +51,10 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+    .fi-sc-section {
+        zoom: 0.9;
+    }
+
 </style>
 
 <div id="wasm-container" class="bg-gray-50 dark:bg-gray-950" wire:ignore>

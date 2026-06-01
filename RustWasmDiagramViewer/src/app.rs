@@ -1322,7 +1322,7 @@ impl eframe::App for TemplateApp {
                 // Colocar o background a controlar a Scene (PanAndDrag)
                 Scene::new()
                     .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
-                    .zoom_range(Rangef::new(0.5, 2.0))
+                    .zoom_range(Rangef::new(0.1, 2.0))
                     .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
                 Window::new("Details")
@@ -1477,19 +1477,44 @@ impl eframe::App for TemplateApp {
                         }
                     });
 
-                // Controlar zoom com uma barra lateral
+                // Controlar zoom com uma barra superior horizontal
                 Area::new(Id::new("DragValue_zoom"))
-                    .anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0))
+                    .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
                     .order(Order::Foreground)
-                    .show(ctx, |ui|{
-                        let center_vec = bg_response.rect.center().to_vec2();
-                        let old_scale = scene_transform.scaling;
+                    .show(ctx, |ui| {
+                        egui::Frame::default()
+                            .fill(egui::Color32::WHITE)
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
+                            .corner_radius(5.0)
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
 
-                        ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
-                        if old_scale != scene_transform.scaling {
-                            let world_vec = (center_vec - scene_transform.translation) / old_scale;
-                            scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
-                        }
+                                ui.visuals_mut().override_text_color = Some(egui::Color32::BLACK);
+
+                                let center_vec = bg_response.rect.center().to_vec2();
+                                let old_scale = scene_transform.scaling;
+                                let mut new_scale = old_scale;
+
+                                ui.horizontal(|ui| {
+                                    if ui.button(" - ").clicked() {
+                                        new_scale = (new_scale - 0.1).max(0.1);
+                                    }
+
+                                    ui.add(Slider::new(&mut new_scale, 0.1 ..= 2.0)
+                                        .show_value(true)
+                                        .step_by(0.01));
+
+                                    if ui.button(" + ").clicked() {
+                                        new_scale = (new_scale + 0.1).min(5.0);
+                                    }
+                                });
+
+                                if old_scale != new_scale {
+                                    scene_transform.scaling = new_scale;
+                                    let world_vec = (center_vec - scene_transform.translation) / old_scale;
+                                    scene_transform.translation += world_vec * (old_scale - scene_transform.scaling);
+                                }
+                            });
                     });
 
             }
