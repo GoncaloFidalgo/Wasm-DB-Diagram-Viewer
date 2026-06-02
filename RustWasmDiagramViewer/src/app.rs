@@ -1142,7 +1142,6 @@ fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut R
             relation.relation_segments.clear();
             selected.clear();
         }
-
     });
 }
 
@@ -1289,7 +1288,7 @@ impl eframe::App for TemplateApp {
                     );
 
                     // Faz screenshot
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+                    ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
                     ctx.request_repaint();
                 }
             }
@@ -1301,7 +1300,7 @@ impl eframe::App for TemplateApp {
                 ctx.request_repaint();
 
                 for event in ctx.input(|i| i.events.clone()) {
-                    if let egui::Event::Screenshot { image, .. } = event {
+                    if let Event::Screenshot { image, .. } = event {
                         self.exporting = false;
 
                         if let Some(saved) = ui.ctx().data_mut(|d| d.get_temp::<TSTransform>(Id::new("saved_transform"))) {
@@ -1327,7 +1326,7 @@ impl eframe::App for TemplateApp {
 
                 Window::new("Details")
                     .order(Order::Tooltip)
-                    .default_size(egui::vec2(320.0, 350.0))
+                    .default_size(vec2(320.0, 350.0))
                     .min_height(150.0)
                     .show(ctx, |ui| {
                         if let Some(selected) = self.selected.last() {
@@ -1338,20 +1337,20 @@ impl eframe::App for TemplateApp {
                                             let t = &mut self.tables[*table];
 
                                             // --- Table grid ---
-                                            egui::Grid::new("table_grid")
+                                            Grid::new("table_grid")
                                                 .num_columns(2)
                                                 .spacing([40.0, 8.0])
                                                 .show(ui, |ui| {
-                                                    ui.label(egui::RichText::new("Type").strong().size(16.5));
-                                                    ui.label(egui::RichText::new("Table").size(16.5));
+                                                    ui.label(RichText::new("Type").strong().size(16.5));
+                                                    ui.label(RichText::new("Table").size(16.5));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Name").strong().size(16.5));
-                                                    ui.label(egui::RichText::new(&t.name).size(16.5));
+                                                    ui.label(RichText::new("Name").strong().size(16.5));
+                                                    ui.label(RichText::new(&t.name).size(16.5));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Columns").strong().size(16.5));
-                                                    ui.label(egui::RichText::new(t.columns.len().to_string()).size(16.5));
+                                                    ui.label(RichText::new("Columns").strong().size(16.5));
+                                                    ui.label(RichText::new(t.columns.len().to_string()).size(16.5));
                                                     ui.end_row();
                                                 });
 
@@ -1360,12 +1359,12 @@ impl eframe::App for TemplateApp {
                                             ui.add_space(5.0);
 
                                             // --- Description ---
-                                            ui.label(egui::RichText::new("Description:").size(19.0));
+                                            ui.label(RichText::new("Description:").size(19.0));
                                             ui.add_enabled_ui(!self.read_only, |ui| {
                                                 ui.add_sized(
                                                     ui.available_size(),
-                                                    egui::TextEdit::multiline(&mut t.description)
-                                                        .font(egui::FontId::proportional(19.0))
+                                                    TextEdit::multiline(&mut t.description)
+                                                        .font(FontId::proportional(19.0))
                                                 );
                                             });
                                         },
@@ -1377,42 +1376,42 @@ impl eframe::App for TemplateApp {
                                             let c = &mut self.tables[*table].columns[*column_idx];
 
                                             // --- Column grid ---
-                                            egui::Grid::new("column_grid")
+                                            Grid::new("column_grid")
                                                 .num_columns(2)
                                                 .spacing([40.0, 8.0])
                                                 .show(ui, |ui| {
-                                                    ui.label(egui::RichText::new("Type").strong().size(16.5));
-                                                    ui.label(egui::RichText::new("Column").size(16.5));
+                                                    ui.label(RichText::new("Type").strong().size(16.5));
+                                                    ui.label(RichText::new("Column").size(16.5));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Table").strong().size(16.5));
-                                                    ui.label(egui::RichText::new(table_name).size(16.5));
+                                                    ui.label(RichText::new("Table").strong().size(16.5));
+                                                    ui.label(RichText::new(table_name).size(16.5));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Name").strong().size(16.5));
-                                                    ui.label(egui::RichText::new(&c.name).size(16.5));
+                                                    ui.label(RichText::new("Name").strong().size(16.5));
+                                                    ui.label(RichText::new(&c.name).size(16.5));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Data Type").strong().size(16.5));
-                                                    ui.label(egui::RichText::new(&c.column_type).monospace().size(16.5).color(egui::Color32::from_gray(120)));
+                                                    ui.label(RichText::new("Data Type").strong().size(16.5));
+                                                    ui.label(RichText::new(&c.column_type).monospace().size(16.5).color(Color32::from_gray(120)));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Key").strong().size(16.5));
+                                                    ui.label(RichText::new("Key").strong().size(16.5));
                                                     let (key_text, key_color) = match c.key_type.as_str() {
-                                                        "PK" => ("Primary Key", egui::Color32::from_rgb(255, 170, 0)),
-                                                        "FK" => ("Foreign Key", egui::Color32::from_rgb(100, 150, 255)),
-                                                        _ => ("No key", egui::Color32::from_gray(130)),
+                                                        "PK" => ("Primary Key", Color32::from_rgb(255, 170, 0)),
+                                                        "FK" => ("Foreign Key", Color32::from_rgb(100, 150, 255)),
+                                                        _ => ("No key", Color32::from_gray(130)),
                                                     };
-                                                    ui.label(egui::RichText::new(key_text).color(key_color).size(16.5));
+                                                    ui.label(RichText::new(key_text).color(key_color).size(16.5));
                                                     ui.end_row();
 
-                                                    ui.label(egui::RichText::new("Nullable").strong().size(16.5));
+                                                    ui.label(RichText::new("Nullable").strong().size(16.5));
                                                     let (null_text, null_color) = if c.nullable {
-                                                        ("Yes", egui::Color32::from_rgb(100, 160, 100))
+                                                        ("Yes", Color32::from_rgb(100, 160, 100))
                                                     } else {
-                                                        ("No", egui::Color32::from_rgb(180, 85, 85))
+                                                        ("No", Color32::from_rgb(180, 85, 85))
                                                     };
-                                                    ui.label(egui::RichText::new(null_text).color(null_color).size(16.5));
+                                                    ui.label(RichText::new(null_text).color(null_color).size(16.5));
                                                     ui.end_row();
 
                                                 });
@@ -1422,12 +1421,12 @@ impl eframe::App for TemplateApp {
                                             ui.add_space(5.0);
 
                                             // --- Description ---
-                                            ui.label(egui::RichText::new("Description:").size(19.0));
+                                            ui.label(RichText::new("Description:").size(19.0));
                                             ui.add_enabled_ui(!self.read_only, |ui| {
                                                 ui.add_sized(
                                                     ui.available_size(),
-                                                    egui::TextEdit::multiline(&mut c.description)
-                                                        .font(egui::FontId::proportional(19.0))
+                                                    TextEdit::multiline(&mut c.description)
+                                                        .font(FontId::proportional(19.0))
                                                 );
                                             });
                                         }
@@ -1437,16 +1436,16 @@ impl eframe::App for TemplateApp {
                                     let r = &mut self.relations[*relation];
 
                                     // --- Relation grid ---
-                                    egui::Grid::new("relation_grid")
+                                    Grid::new("relation_grid")
                                         .num_columns(2)
                                         .spacing([40.0, 8.0])
                                         .show(ui, |ui| {
-                                            ui.label(egui::RichText::new("Type").strong().size(16.5));
-                                            ui.label(egui::RichText::new("Relation").size(16.5));
+                                            ui.label(RichText::new("Type").strong().size(16.5));
+                                            ui.label(RichText::new("Relation").size(16.5));
                                             ui.end_row();
 
-                                            ui.label(egui::RichText::new("Name").strong().size(16.5));
-                                            ui.label(egui::RichText::new(&r.name).size(16.5));
+                                            ui.label(RichText::new("Name").strong().size(16.5));
+                                            ui.label(RichText::new(&r.name).size(16.5));
                                             ui.end_row();
                                         });
 
@@ -1455,12 +1454,12 @@ impl eframe::App for TemplateApp {
                                     ui.add_space(5.0);
 
                                     // --- Description ---
-                                    ui.label(egui::RichText::new("Description:").size(19.0));
+                                    ui.label(RichText::new("Description:").size(19.0));
                                     ui.add_enabled_ui(!self.read_only, |ui| {
                                         ui.add_sized(
                                             ui.available_size(),
-                                            egui::TextEdit::multiline(&mut r.description)
-                                                .font(egui::FontId::proportional(19.0))
+                                            TextEdit::multiline(&mut r.description)
+                                                .font(FontId::proportional(19.0))
                                         );
                                     });
                                 }
@@ -1468,7 +1467,7 @@ impl eframe::App for TemplateApp {
                         } else {
                             // --- Empty state ---
                             ui.label(
-                                egui::RichText::new("No object selected.")
+                                RichText::new("No object selected.")
                                     .size(20.0)
                                     .strong()
                             );
@@ -1482,14 +1481,14 @@ impl eframe::App for TemplateApp {
                     .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
                     .order(Order::Foreground)
                     .show(ctx, |ui| {
-                        egui::Frame::default()
-                            .fill(egui::Color32::WHITE)
-                            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
+                        Frame::default()
+                            .fill(Color32::WHITE)
+                            .stroke(Stroke::new(1.0, Color32::BLACK))
                             .corner_radius(5.0)
                             .inner_margin(8.0)
                             .show(ui, |ui| {
 
-                                ui.visuals_mut().override_text_color = Some(egui::Color32::BLACK);
+                                ui.visuals_mut().override_text_color = Some(Color32::BLACK);
 
                                 let center_vec = bg_response.rect.center().to_vec2();
                                 let old_scale = scene_transform.scaling;
