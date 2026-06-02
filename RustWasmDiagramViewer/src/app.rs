@@ -491,7 +491,7 @@ impl Table {
                         }
                         Scene::new()
                             .drag_pan_buttons(DragPanButtons::empty())
-                            .zoom_range(Rangef::new(0.5, 2.0))
+                            .zoom_range(Rangef::new(0.1, 2.0))
                             .register_pan_and_zoom(ui, &mut area_response, &mut scene_transform);
                     });
             });
