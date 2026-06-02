@@ -51,7 +51,7 @@ pub enum Selected {
     Table { table: usize, column: Option<usize> },
     Relation { relation: usize, segment: Option<usize> },
 }
-fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize) {
+fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize, read_only: bool) {
     match item {
         Selected::Relation { relation, segment } => {
             let rela_idx = relation;
@@ -68,6 +68,7 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
                         });
 
                         selected.push(item);
+
                     }
                 },
                 Some(seg_idx) => {
@@ -84,6 +85,7 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
                         selected.retain(|s| s != &item);
                     } else {
                         selected.push(item);
+
                     }
 
                     let selected_segments = selected.iter().filter(|s| {
@@ -120,7 +122,19 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
             } else {
                 selected.retain(|s| s != &Selected::Table { table, column: None });
                 selected.push(item);
+
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() && !read_only {
+            let _ = js_sys::Reflect::set(
+                &window,
+                &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
+                &wasm_bindgen::JsValue::from_bool(true),
+            );
         }
     }
 }
@@ -335,8 +349,6 @@ const COL_NAME: Color32 = Color32::from_rgb(228, 228, 228);
 const COL_TYPE: Color32 = Color32::from_gray(140);
 const NULL_TEXT: Color32 = Color32::from_rgb(155, 155, 175);
 const NULL_BG: Color32 = Color32::from_rgb(40, 40, 52);
-const POPUP_BG: Color32 = Color32::from_rgb(24, 24, 28);
-const POPUP_BORDER: Color32 = Color32::from_gray(52);
 
 // Constantes para definir tamanhos dos elementos das tabelas
 const HEADER_SIZE: f32 = 40.0;
@@ -355,7 +367,7 @@ impl Table {
         id: usize,
         mut scene_transform: &mut TSTransform,
         read_only: bool,
-        selected: &mut Vec<Selected>
+        selected: &mut Vec<Selected>,
     ) -> (Vec2, Option<usize>) {
         let table_width = ctx.fonts_mut(|f| {
             let header_width = f
@@ -427,29 +439,30 @@ impl Table {
                     }).show(ui, |ui| {
                         let mut area_response = ui.allocate_ui(Vec2::ZERO, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
-                            if self.header_ui(ui, table_width).clicked() && !read_only {
+                            if self.header_ui(ui, table_width).clicked() {
                                 if !ctx.input(|i| {i.modifiers.command_only()}) {selected.clear();}
-                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                             }
                             ui.add_space(2.0);
                             for (col_idx, column) in self.columns.iter().enumerate() {
-                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}).clicked() && !read_only {
+                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}).clicked()  {
                                     if !ctx.input(|i| {i.modifiers.command_only()}) {
                                         selected.clear();
-                                        toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0);
+                                        toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0, read_only);
                                     } else {
-                                        toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                        toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                                     }
                                 }
                             }
                             ui.add_space(6.0);
                         }).response.interact(Sense::click_and_drag());
 
-                        if !read_only {
+
                             if area_response.clicked() {
                                 if !ctx.input(|i| {i.modifiers.command_only()}) {selected.clear();}
-                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                             }
+                    if !read_only {
                             if area_response.drag_started() {
                                 for select in selected.iter_mut() {
                                     match select {
@@ -462,10 +475,10 @@ impl Table {
                                 let item = Selected::Table { table: id, column: None };
                                 if !selected.contains(&item) {
                                     if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
-                                    toggle_selected(selected, item, 0);
+                                    toggle_selected(selected, item, 0, read_only);
                                 } else {
-                                    toggle_selected(selected, item, 0);
-                                    toggle_selected(selected, Selected::Table { table: id, column: None }, 0);
+                                    toggle_selected(selected, item, 0, read_only);
+                                    toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                                 }
                             }
                             if area_response.dragged() {
@@ -507,27 +520,6 @@ impl Table {
             FontId::proportional(18.0),
             HEADER_TEXT,
         );
-
-        Popup::menu(&response)
-            .frame(popup_frame())
-            .width(260.0)
-            .show(|ui| {
-                ui.spacing_mut().item_spacing.y = 3.0;
-                ui.label(
-                    RichText::new(&self.name)
-                        .size(15.0)
-                        .strong()
-                        .color(HEADER_TEXT),
-                );
-                ui.label(
-                    RichText::new(format!("{} columns", self.columns.len()))
-                        .size(11.5)
-                        .color(Color32::from_gray(105)),
-                );
-                popup_divider(ui);
-                popup_description(ui, &self.description);
-            });
-
         response
     }
 }
@@ -640,97 +632,9 @@ impl Column {
             painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
             painter.galley(badge_rect.min + pad, unique_galley, NULL_TEXT);
         }
-
-        Popup::menu(&response)
-            .frame(popup_frame())
-            .width(280.0)
-            .show(|ui| {
-                ui.spacing_mut().item_spacing.y = 3.0;
-
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(&self.name)
-                            .size(14.5)
-                            .strong()
-                            .color(HEADER_TEXT),
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(&self.column_type)
-                                .size(11.5)
-                                .monospace()
-                                .color(Color32::from_gray(120)),
-                        );
-                    });
-                });
-
-                ui.horizontal(|ui| {
-                    ui.add_space(1.0);
-                    let (dot_rect, _) = ui.allocate_exact_size(vec2(10.0, 14.0), Sense::hover());
-                    let dot_color = if self.nullable {
-                        Color32::from_rgb(100, 160, 100)
-                    } else {
-                        Color32::from_rgb(180, 85, 85)
-                    };
-                    ui.painter()
-                        .circle_filled(dot_rect.center(), 3.0, dot_color);
-                    ui.label(
-                        RichText::new(if self.nullable {
-                            "nullable"
-                        } else {
-                            "not null"
-                        })
-                            .size(11.5)
-                            .color(Color32::from_gray(130)),
-                    );
-                });
-
-                popup_divider(ui);
-                popup_description(ui, &self.description);
-            });
-
         response
     }
 }
-fn popup_frame() -> Frame {
-    Frame::new()
-        .fill(POPUP_BG)
-        .stroke(Stroke::new(1.0, POPUP_BORDER))
-        .corner_radius(8.0)
-        .inner_margin(Margin::same(14))
-        .shadow(Shadow {
-            offset: [0, 6],
-            blur: 18,
-            spread: 0,
-            color: Color32::from_black_alpha(90),
-        })
-}
-
-/// Standardized description renderer
-fn popup_description(ui: &mut Ui, description: &str) {
-    if description.is_empty() {
-        ui.label(
-            RichText::new("No description.")
-                .size(12.5)
-                .italics()
-                .color(Color32::from_gray(95)),
-        );
-    } else {
-        ui.label(
-            RichText::new(description)
-                .size(12.5)
-                .color(Color32::from_gray(185)),
-        );
-    }
-}
-fn popup_divider(ui: &mut Ui) {
-    ui.add_space(7.0);
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
-    ui.painter()
-        .rect_filled(rect, CornerRadius::ZERO, Color32::from_gray(42));
-    ui.add_space(7.0);
-}
-
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(
@@ -992,14 +896,19 @@ impl TemplateApp {
             let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
             let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
             let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
-            popup_relation_create(&rel_first_response, popup_first_id, relation, self.read_only, &mut self.selected);
             let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
-            popup_relation_create(&rel_second_response, popup_second_id, relation, self.read_only, &mut self.selected);
-            if !self.read_only {
+            if !self.read_only
+            {
+                popup_relation_create(&rel_first_response, popup_first_id, relation, &mut self.selected);
+                popup_relation_create(&rel_second_response, popup_second_id, relation,  &mut self.selected);
+            }
+
+
                 if rel_first_response.clicked() || rel_second_response.clicked() {
                     if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                    toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len());
+                    toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
                 }
+            if !self.read_only {
                 if !front_line && rel_first_response.secondary_clicked() {
                     self.selected.clear();
                     if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
@@ -1007,7 +916,8 @@ impl TemplateApp {
                     let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
                     relation.relation_segments.insert(0, mid);
                     relation.relation_segments.insert(1, next);
-                    Popup::open_id(ui.ctx(), popup_first_id);
+                  Popup::open_id(ui.ctx(), popup_first_id);
+
                 }
                 if rel_second_response.secondary_clicked() {
                     self.selected.clear();
@@ -1027,7 +937,8 @@ impl TemplateApp {
                         relation.relation_segments.push(next);
                         relation.relation_segments.push(mid);
                     }
-                    Popup::open_id(ui.ctx(), popup_second_id);
+                     Popup::open_id(ui.ctx(), popup_second_id);
+
                 }
             }
 
@@ -1047,22 +958,25 @@ impl TemplateApp {
 
                 let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
                 let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
-                popup_relation_create(&seg_response, popup_id, relation, self.read_only, &mut self.selected);
 
-                if !self.read_only {
+
+
                     if seg_response.clicked() {
                         if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
+                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
                     }
+                if !self.read_only {
+                    popup_relation_create(&seg_response, popup_id, relation, &mut self.selected);
+
                     if seg_response.drag_started() {
                         let item_seg = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
                         let item_rela = Selected::Relation { relation: rela_idx, segment: None };
                         if !self.selected.contains(&item_seg) && !self.selected.contains(&item_rela) {
                             if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
+                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len(), self.read_only);
                         } else {
-                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len());
-                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len());
+                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len(),self.read_only);
+                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
                         }
                     }
 
@@ -1115,7 +1029,7 @@ impl TemplateApp {
                         let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
                         let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
 
-                        popup_relation_create(&pt_response, pt_popup_id, relation, self.read_only, &mut self.selected);
+                        popup_relation_create(&pt_response, pt_popup_id, relation,&mut self.selected);
 
                         if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
                             let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
@@ -1222,13 +1136,13 @@ fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line
     }
 }
 
-fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, read_only: bool, selected: &mut Vec<Selected>) {
+fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, selected: &mut Vec<Selected>) {
     Popup::menu(seg_response).id(popup_id).show(|ui| {
-        if !read_only && ui.button("⟳ Reset").clicked() {
+        if ui.button("⟳ Reset").clicked() {
             relation.relation_segments.clear();
             selected.clear();
         }
-        popup_description(ui, &relation.description);
+
     });
 }
 
@@ -1280,7 +1194,13 @@ impl eframe::App for TemplateApp {
         if let Ok(mut flag) = self.save_trigger.lock() {
             if *flag {
                 *flag = false; // Desliga a flag
-
+                if let Some(window) = web_sys::window() {
+                    let _ = js_sys::Reflect::set(
+                        &window,
+                        &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
+                        &wasm_bindgen::JsValue::from_bool(false),
+                    );
+                }
                 // Gera o JSON e envia para o Laravel
                 match serde_json::to_string(self) {
                     Ok(json_string) => {
@@ -1288,6 +1208,7 @@ impl eframe::App for TemplateApp {
                     }
                     Err(e) => tracing::error!("Erro: {}", e),
                 }
+
             }
         }
         #[cfg(target_arch = "wasm32")]
@@ -1401,56 +1322,199 @@ impl eframe::App for TemplateApp {
                 // Colocar o background a controlar a Scene (PanAndDrag)
                 Scene::new()
                     .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
-                    .zoom_range(Rangef::new(0.5, 2.0))
+                    .zoom_range(Rangef::new(0.1, 2.0))
                     .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
 
-                if !self.read_only {
-                    Window::new("Inspector")
-                        .order(Order::Tooltip)
-                        .show(ctx, |ui| {
-                            /* if ui.add(Button::new(RichText::new("Reset Canvas").color(Color32::RED))).clicked() {
-                                *self = Default::default();
-                                ctx.memory_mut(|mem| *mem = Default::default());
-                            } */
-                            if let Some(selected) = self.selected.last() {
-                                match selected {
-                                    Selected::Table { table, column } => {
-                                        match column {
-                                            None => {
-                                                ui.label("Tabela, descrição:");
-                                                ui.text_edit_multiline(&mut self.tables[*table].description);
-                                            },
-                                            Some(column_idx) => {
-                                                ui.label("Coluna, descrição:");
-                                                ui.text_edit_multiline(&mut self.tables[*table].columns[*column_idx].description);
-                                            }
+                Window::new("Details")
+                    .order(Order::Tooltip)
+                    .default_size(egui::vec2(320.0, 350.0))
+                    .min_height(150.0)
+                    .show(ctx, |ui| {
+                        if let Some(selected) = self.selected.last() {
+                            match selected {
+                                Selected::Table { table, column } => {
+                                    match column {
+                                        None => {
+                                            let t = &mut self.tables[*table];
+
+                                            // --- Table grid ---
+                                            egui::Grid::new("table_grid")
+                                                .num_columns(2)
+                                                .spacing([40.0, 8.0])
+                                                .show(ui, |ui| {
+                                                    ui.label(egui::RichText::new("Type").strong().size(16.5));
+                                                    ui.label(egui::RichText::new("Table").size(16.5));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Name").strong().size(16.5));
+                                                    ui.label(egui::RichText::new(&t.name).size(16.5));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Columns").strong().size(16.5));
+                                                    ui.label(egui::RichText::new(t.columns.len().to_string()).size(16.5));
+                                                    ui.end_row();
+                                                });
+
+                                            ui.add_space(10.0);
+                                            ui.separator();
+                                            ui.add_space(5.0);
+
+                                            // --- Description ---
+                                            ui.label(egui::RichText::new("Description:").size(19.0));
+                                            ui.add_enabled_ui(!self.read_only, |ui| {
+                                                ui.add_sized(
+                                                    ui.available_size(),
+                                                    egui::TextEdit::multiline(&mut t.description)
+                                                        .font(egui::FontId::proportional(19.0))
+                                                );
+                                            });
+                                        },
+                                        Some(column_idx) => {
+                                            // Save table name by clonning
+                                            let table_name = self.tables[*table].name.clone();
+
+                                            // Get the column without memory conflicts
+                                            let c = &mut self.tables[*table].columns[*column_idx];
+
+                                            // --- Column grid ---
+                                            egui::Grid::new("column_grid")
+                                                .num_columns(2)
+                                                .spacing([40.0, 8.0])
+                                                .show(ui, |ui| {
+                                                    ui.label(egui::RichText::new("Type").strong().size(16.5));
+                                                    ui.label(egui::RichText::new("Column").size(16.5));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Table").strong().size(16.5));
+                                                    ui.label(egui::RichText::new(table_name).size(16.5));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Name").strong().size(16.5));
+                                                    ui.label(egui::RichText::new(&c.name).size(16.5));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Data Type").strong().size(16.5));
+                                                    ui.label(egui::RichText::new(&c.column_type).monospace().size(16.5).color(egui::Color32::from_gray(120)));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Key").strong().size(16.5));
+                                                    let (key_text, key_color) = match c.key_type.as_str() {
+                                                        "PK" => ("Primary Key", egui::Color32::from_rgb(255, 170, 0)),
+                                                        "FK" => ("Foreign Key", egui::Color32::from_rgb(100, 150, 255)),
+                                                        _ => ("No key", egui::Color32::from_gray(130)),
+                                                    };
+                                                    ui.label(egui::RichText::new(key_text).color(key_color).size(16.5));
+                                                    ui.end_row();
+
+                                                    ui.label(egui::RichText::new("Nullable").strong().size(16.5));
+                                                    let (null_text, null_color) = if c.nullable {
+                                                        ("Yes", egui::Color32::from_rgb(100, 160, 100))
+                                                    } else {
+                                                        ("No", egui::Color32::from_rgb(180, 85, 85))
+                                                    };
+                                                    ui.label(egui::RichText::new(null_text).color(null_color).size(16.5));
+                                                    ui.end_row();
+
+                                                });
+
+                                            ui.add_space(10.0);
+                                            ui.separator();
+                                            ui.add_space(5.0);
+
+                                            // --- Description ---
+                                            ui.label(egui::RichText::new("Description:").size(19.0));
+                                            ui.add_enabled_ui(!self.read_only, |ui| {
+                                                ui.add_sized(
+                                                    ui.available_size(),
+                                                    egui::TextEdit::multiline(&mut c.description)
+                                                        .font(egui::FontId::proportional(19.0))
+                                                );
+                                            });
                                         }
-                                    },
-                                    Selected::Relation { relation, .. } => {
-                                        ui.label("Relação, descrição:");
-                                        ui.text_edit_multiline(&mut self.relations[*relation].description);
                                     }
+                                },
+                                Selected::Relation { relation, .. } => {
+                                    let r = &mut self.relations[*relation];
+
+                                    // --- Relation grid ---
+                                    egui::Grid::new("relation_grid")
+                                        .num_columns(2)
+                                        .spacing([40.0, 8.0])
+                                        .show(ui, |ui| {
+                                            ui.label(egui::RichText::new("Type").strong().size(16.5));
+                                            ui.label(egui::RichText::new("Relation").size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(egui::RichText::new("Name").strong().size(16.5));
+                                            ui.label(egui::RichText::new(&r.name).size(16.5));
+                                            ui.end_row();
+                                        });
+
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.add_space(5.0);
+
+                                    // --- Description ---
+                                    ui.label(egui::RichText::new("Description:").size(19.0));
+                                    ui.add_enabled_ui(!self.read_only, |ui| {
+                                        ui.add_sized(
+                                            ui.available_size(),
+                                            egui::TextEdit::multiline(&mut r.description)
+                                                .font(egui::FontId::proportional(19.0))
+                                        );
+                                    });
                                 }
-                            } else {
-                                ui.label("Nenhum objeto selecionado.");
-                                ui.text_edit_multiline(&mut "");
                             }
-                        });
-                }
+                        } else {
+                            // --- Empty state ---
+                            ui.label(
+                                egui::RichText::new("No object selected.")
+                                    .size(20.0)
+                                    .strong()
+                            );
 
-                // Controlar zoom com uma barra lateral
-                Area::new(Id::new("DragValue_zoom"))
-                    .anchor(Align2::RIGHT_CENTER, vec2(-100.0, 0.0))
-                    .order(Order::Foreground)
-                    .show(ctx, |ui|{
-                        let center_vec = bg_response.rect.center().to_vec2();
-                        let old_scale = scene_transform.scaling;
-
-                        ui.add(Slider::new(&mut scene_transform.scaling, 0.5..=2.0).vertical());
-                        if old_scale != scene_transform.scaling {
-                            let world_vec = (center_vec - scene_transform.translation) / old_scale;
-                            scene_transform.translation += world_vec * (old_scale-scene_transform.scaling);
+                            ui.allocate_space(ui.available_size());
                         }
+                    });
+
+                // Controlar zoom com uma barra superior horizontal
+                Area::new(Id::new("DragValue_zoom"))
+                    .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
+                    .order(Order::Foreground)
+                    .show(ctx, |ui| {
+                        egui::Frame::default()
+                            .fill(egui::Color32::WHITE)
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
+                            .corner_radius(5.0)
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
+
+                                ui.visuals_mut().override_text_color = Some(egui::Color32::BLACK);
+
+                                let center_vec = bg_response.rect.center().to_vec2();
+                                let old_scale = scene_transform.scaling;
+                                let mut new_scale = old_scale;
+
+                                ui.horizontal(|ui| {
+                                    if ui.button(" - ").clicked() {
+                                        new_scale = (new_scale - 0.1).max(0.1);
+                                    }
+
+                                    ui.add(Slider::new(&mut new_scale, 0.1 ..= 2.0)
+                                        .show_value(true)
+                                        .step_by(0.01));
+
+                                    if ui.button(" + ").clicked() {
+                                        new_scale = (new_scale + 0.1).min(5.0);
+                                    }
+                                });
+
+                                if old_scale != new_scale {
+                                    scene_transform.scaling = new_scale;
+                                    let world_vec = (center_vec - scene_transform.translation) / old_scale;
+                                    scene_transform.translation += world_vec * (old_scale - scene_transform.scaling);
+                                }
+                            });
                     });
 
             }

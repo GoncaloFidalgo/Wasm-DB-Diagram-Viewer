@@ -37,7 +37,7 @@ class ExtractForm
                 ])
                 ->default('sqlite')
                 ->live()
-                ->afterStateUpdated(function (CreateDiagram $livewire) {
+                ->afterStateUpdated(function ($livewire) {
                     $livewire->extractedTables = [];
                 })
                 ->required(),
@@ -47,11 +47,11 @@ class ExtractForm
                 ->view('filament.forms.components.custom-sqlite-upload')
                 ->required(fn(Get $get) => $get('engine') === 'sqlite')
                 ->validationMessages([
-                    'required' => 'Carrega um ficheiro .sqlite ou .db para prosseguir.',
+                    'required' => 'Carregue um ficheiro .sqlite ou .db para prosseguir.',
                 ])
                 ->visible(fn(Get $get) => $get('engine') === 'sqlite')
                 ->live()
-                ->afterStateUpdated(function ($state, CreateDiagram $livewire) {
+                ->afterStateUpdated(function ($state, $livewire) {
                     if (!$state) {
                         $livewire->extractedTables = [];
                         return;
@@ -74,12 +74,16 @@ class ExtractForm
                         ->label('Base de Dados')
                         ->columnSpan(2)
                         ->required(fn(Get $get) => $get('engine') === 'mysql'),
-                    TextInput::make('mysql_username')
-                        ->label('Utilizador')
-                        ->required(fn(Get $get) => $get('engine') === 'mysql'),
-                    TextInput::make('mysql_password')
-                        ->label('Password')
-                        ->password(),
+
+                        TextInput::make('mysql_username')
+                            ->label('Utilizador')
+                            ->autocomplete('off')
+                            ->required(fn(Get $get) => $get('engine') === 'mysql'),
+
+                        TextInput::make('mysql_password')
+                            ->label('Password')
+                            ->password()
+                            ->autocomplete('new-password'),
                 ]),
         ];
     }
@@ -93,7 +97,7 @@ class ExtractForm
             Grid::make(2)->schema([
                 TextInput::make('name')
                     ->label('Nome do Diagrama')
-                    ->placeholder('Ex: Base de Dados Chinook')
+                    ->placeholder('Ex: Base de dados loja de tshirts')
                     ->required()
                     ->validationMessages([
                         'required' => 'O nome do diagrama é obrigatório.',
@@ -110,10 +114,10 @@ class ExtractForm
             ]),
 
             CheckboxList::make('selectedTables')
-                ->label('Selecione as Tabelas para o Diagrama')
-                ->options(fn(CreateDiagram $livewire) => empty($livewire->extractedTables) ? [] : array_combine($livewire->extractedTables, $livewire->extractedTables))
+                ->label('Selecione as tabelas para o diagrama')
+                ->options(fn($livewire) => empty($livewire->extractedTables) ? [] : array_combine($livewire->extractedTables, $livewire->extractedTables))
                 ->columns(3)
-                ->gridDirection('row')
+                ->gridDirection('column')
                 ->bulkToggleable()
                 ->searchable()
                 ->required()

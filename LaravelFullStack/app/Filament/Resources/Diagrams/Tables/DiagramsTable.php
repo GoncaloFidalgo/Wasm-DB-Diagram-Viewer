@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Diagrams\Tables;
 
+use App\Filament\Actions\EditDiagramMetadataAction;
 use App\Filament\Actions\PublishDiagramAction;
 use App\Models\Diagram;
 use Filament\Actions\Action;
@@ -64,6 +65,9 @@ class DiagramsTable
                                 ->success()
                                 ->send();
                         }),
+                    EditDiagramMetadataAction::configure(
+                        Action::make('edit_metadata')->label('Editar dados')
+                    ),
                 ]),
                 Action::make('open')
                     ->label('Abrir')
