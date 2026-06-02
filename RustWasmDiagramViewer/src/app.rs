@@ -1413,6 +1413,15 @@ impl eframe::App for TemplateApp {
                                                     ui.label(RichText::new(null_text).color(null_color).size(16.5));
                                                     ui.end_row();
 
+                                                    ui.label(RichText::new("Unique").strong().size(16.5));
+                                                    let (null_text, null_color) = if c.unique {
+                                                        ("Yes", Color32::from_rgb(100, 160, 100))
+                                                    } else {
+                                                        ("No", Color32::from_rgb(180, 85, 85))
+                                                    };
+                                                    ui.label(RichText::new(null_text).color(null_color).size(16.5));
+                                                    ui.end_row();
+
                                                 });
 
                                             ui.add_space(10.0);
