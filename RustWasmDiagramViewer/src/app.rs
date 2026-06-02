@@ -899,10 +899,9 @@ impl TemplateApp {
                 if !ui.input(|i| {i.modifiers.command_only()}) || self.read_only {self.selected.clear();}
                 toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
             }
-            if !self.read_only
-            {
-                let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
-                let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
+            let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
+            let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
+            if !self.read_only {
                 popup_relation_create(&rel_first_response, popup_first_id, relation, &mut self.selected);
                 popup_relation_create(&rel_second_response, popup_second_id, relation,  &mut self.selected);
                 
@@ -913,8 +912,7 @@ impl TemplateApp {
                     let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
                     relation.relation_segments.insert(0, mid);
                     relation.relation_segments.insert(1, next);
-                  Popup::open_id(ui.ctx(), popup_first_id);
-
+                    Popup::open_id(ui.ctx(), popup_first_id);
                 }
                 if rel_second_response.secondary_clicked() {
                     self.selected.clear();
@@ -934,7 +932,7 @@ impl TemplateApp {
                         relation.relation_segments.push(next);
                         relation.relation_segments.push(mid);
                     }
-                     Popup::open_id(ui.ctx(), popup_second_id);
+                    Popup::open_id(ui.ctx(), popup_second_id);
                 }
             }
 
@@ -999,6 +997,7 @@ impl TemplateApp {
 
                     // --- Arrastar ---
                     if seg_response.dragged() {
+                        Popup::close_id(ui.ctx(), popup_id);
                         let delta = seg_response.drag_delta() / scene_transform.scaling;
                         delta_used = delta;
                         ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
@@ -1006,7 +1005,6 @@ impl TemplateApp {
 
                     // --- Dividir linha ---
                     if seg_response.secondary_clicked() {
-                        Popup::close_id(ui.ctx(), popup_id);
                         self.selected.clear();
                         let mut mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
                         let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
@@ -1056,6 +1054,7 @@ impl TemplateApp {
                             self.selected.clear();
                             relation.relation_segments.remove(seg_idx);
                             relation.relation_segments.remove(seg_idx - 1);
+                            Popup::open_id(ui.ctx(), popup_second_id);
                         }
 
                         if pt_response.drag_stopped() {
