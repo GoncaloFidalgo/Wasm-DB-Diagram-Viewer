@@ -385,15 +385,13 @@ class DiagramViewer extends Page
         $oldRelations = $currentDiagram['relations'] ?? [];
 
         $newTablesList = [];
-        $indexMapping = [];
 
         $extractedTablesMap = [];
         foreach ($this->fullExtractedData as $extractedTable) {
             $extractedTablesMap[$extractedTable['name']] = $extractedTable;
         }
-        foreach ($oldTables as $oldIndex => $table) {
+        foreach ($oldTables as $table) {
             if (in_array($table['name'], $selectedTableNames)) {
-                $newIndex = count($newTablesList);
 
                 if (isset($extractedTablesMap[$table['name']])) {
                     $freshColumns = $extractedTablesMap[$table['name']]['columns'];
@@ -418,9 +416,6 @@ class DiagramViewer extends Page
                 }
 
                 $newTablesList[] = $table;
-                $indexMapping[$oldIndex] = $newIndex;
-            } else {
-                $indexMapping[$oldIndex] = null; // Tabela foi apagada
             }
         }
 
