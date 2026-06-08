@@ -25,12 +25,13 @@ class DiagramResource extends Resource
     protected static bool $hasTitleCaseModelLabel = false; // Maiuscula na primeira letra de cada palavra
     protected static ?string $navigationLabel = 'Os meus Diagramas';
     protected static ?string $slug = 'meus-diagramas';
+    protected static ?int $navigationSort = 1;
     #endregion
 
-    public static function form(Schema $schema): Schema
-    {
-        return DiagramForm::configure($schema);
-    }
+//    public static function form(Schema $schema): Schema
+//    {
+//        return DiagramForm::configure($schema);
+//    }
 
     public static function table(Table $table): Table
     {

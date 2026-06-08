@@ -5,6 +5,8 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class DatabaseExtractorService
 {
@@ -13,49 +15,25 @@ class DatabaseExtractorService
     {
         $this->setupConnection($filePath, $engine, $state);
 
-        $tablesData = [];
-        $tableNames = $this->fetchTables();
+        try {
+            $tablesData = [];
+            $tableNames = $this->fetchTables();
 
-        // Para cada tabela
-        // Obter as chaves estrangeiras e respetivas colunas
-        // Obter as colunas da tabela
-        // Adicionar as colunas formatadas para a estrutura "Column" do módulo wasm à lista de colunas da tabela
-        // Adicionar um registo à lista de tabelas com o nome da tabela e a sua lista de colunas
-        foreach ($tableNames as $tableName) {
-            $foreignKeys = $this->fetchForeignKeys($tableName);
-            $fkColumnNames = array_column($foreignKeys, 'from');
-
-            $columns = $this->fetchColumns($tableName);
-            $formattedColumns = [];
-
-
-            foreach ($columns as $column) {
-                $columnName = $column->name;
-
-                $keyType = '';
-                if ($column->pk) {
-                    $keyType = 'PK';
-                } elseif (in_array($columnName, $fkColumnNames)) {
-                    $keyType = 'FK';
-                }
-
-                $formattedColumns[] = [
-                    'name' => $columnName,
-                    'column_type' => $column->type,
-                    'nullable' => !$column->notnull,
-                    'description' => '',
-                    'key_type' => $keyType,
+            foreach ($tableNames as $tableName) {
+                $tablesData[] = [
+                    'name' => $tableName,
+                    'columns' => $this->formatColumnsForSchema($tableName),
                 ];
             }
 
-            $tablesData[] = [
-                'name' => $tableName,
-                'columns' => $formattedColumns,
-            ];
-        }
+            DB::purge('dynamic_extract');
+            return $tablesData;
 
-        DB::purge('dynamic_extract');
-        return $tablesData;
+        } catch (\Exception $e) {
+            DB::purge('dynamic_extract');
+            //throw new \Exception("Erro na extração: " . $e->getMessage());
+            throw new \Exception(1 . $e->getMessage());
+        }
     }
 
 
@@ -73,34 +51,15 @@ class DatabaseExtractorService
 
         $tIndex = 0;
         foreach ($selectedTableNames as $tableName) {
-            $foreignKeys = $this->fetchForeignKeys($tableName);
-            $fkColumnNames = array_column($foreignKeys, 'from');
+            $formattedColumns = $this->formatColumnsForSchema($tableName);
 
-            $columns = $this->fetchColumns($tableName);
-
-            if (empty($columns)) continue;
+            if (empty($formattedColumns)) continue;
 
             $tableIndices[$tableName] = $tIndex;
-            $formattedColumns = [];
 
-            foreach ($columns as $cIndex => $column) {
-                $columnName = $column->name;
-                $columnIndices[$tableName][$columnName] = $cIndex;
-
-                $keyType = '';
-                if ($column->pk) {
-                    $keyType = 'PK';
-                } elseif (in_array($columnName, $fkColumnNames)) {
-                    $keyType = 'FK';
-                }
-
-                $formattedColumns[] = [
-                    'name' => $columnName,
-                    'column_type' => $column->type,
-                    'nullable' => !$column->notnull,
-                    'description' => '',
-                    'key_type' => $keyType,
-                ];
+            // Map column indices to build the relations
+            foreach ($formattedColumns as $cIndex => $col) {
+                $columnIndices[$tableName][$col['name']] = $cIndex;
             }
 
             $schema['tables'][] = [
@@ -111,14 +70,13 @@ class DatabaseExtractorService
             $tIndex++;
         }
 
-
         foreach ($selectedTableNames as $tableName) {
             if (!isset($tableIndices[$tableName])) continue;
 
             $foreignKeys = $this->fetchForeignKeys($tableName);
 
             foreach ($foreignKeys as $fk) {
-                $fromTableIdx = $tableIndices[$tableName] ?? null;
+                $fromTableIdx = $tableIndices[$tableName];
                 $toTableIdx   = $tableIndices[$fk->table] ?? null;
 
                 $fromColIdx = $columnIndices[$tableName][$fk->from] ?? null;
@@ -126,7 +84,7 @@ class DatabaseExtractorService
 
                 if (isset($fromTableIdx, $toTableIdx, $fromColIdx, $toColIdx)) {
                     $schema['relations'][] = [
-                        'name' => "{$tableName}_$fk->table",
+                        'name' => "{$tableName}_{$fk->from}_{$fk->table}",
                         'relation_segments' => [],
                         'tables' => [$fromTableIdx, $toTableIdx],
                         'columns' => [$fromColIdx, $toColIdx],
@@ -135,9 +93,7 @@ class DatabaseExtractorService
                 }
             }
         }
-
         DB::purge('dynamic_extract');
-
         return json_encode($schema);
     }
 
@@ -147,7 +103,42 @@ class DatabaseExtractorService
      * ==========================================
      */
 
-    private function setupConnection(?string $path, string $engine, array $state = []) : void
+    /**
+     *  Fetch table foreign keys columns and table columns, then format column according to rust structures in the wasm module
+     *
+     * @param string $tableName
+     * @return array
+     *
+     */
+    private function formatColumnsForSchema(string $tableName): array
+    {
+        $foreignKeys = $this->fetchForeignKeys($tableName);
+        $fkColumnNames = array_column($foreignKeys, 'from');
+
+        $columns = $this->fetchColumns($tableName);
+        $formattedColumns = [];
+
+        foreach ($columns as $column) {
+            $columnName = $column->name;
+
+            $keyType = '';
+            if ($column->pk) {
+                $keyType = 'PK';
+            } elseif (in_array($columnName, $fkColumnNames)) {
+                $keyType = 'FK';
+            }
+
+            $formattedColumns[] = [
+                'name' => $columnName,
+                'column_type' => $column->type,
+                'nullable' => !$column->notnull,
+                'description' => '',
+                'key_type' => $keyType,
+            ];
+        }
+        return $formattedColumns;
+    }
+    public function setupConnection(?string $path, string $engine, array $state = []) : void
     {
         if ($engine === 'mysql') {
             Config::set('database.connections.dynamic_extract', [
@@ -168,52 +159,82 @@ class DatabaseExtractorService
                 'foreign_key_constraints' => true,
             ]);
         }
-        // Limpar conexões existentes, cache e conectar novamente com os dados fornecidos
+        // Clean existing connection and try to connect to the given database
         DB::purge('dynamic_extract');
-        DB::connection('dynamic_extract');
+        try {
+            // Test the connection
+            DB::connection('dynamic_extract')->getPdo();
+        } catch (\Exception $e) {
+            //throw new \Exception("Erro de Ligação: " . $e->getMessage());
+            throw new \Exception(0 . $e->getMessage());
+        }
     }
 
+    /**
+     *  Resolves the absolute path of the generated SQLite file by Filament
+     *
+     * @param mixed $filePathData
+     * @return string
+     * @throws \Exception
+     *
+     */
+    public function resolveSqlitePath(mixed $filePathData): string
+    {
+        if (!$filePathData) throw new \Exception('Ficheiro SQLite não encontrado.');
+
+        $fileItem = is_array($filePathData) ? array_values($filePathData)[0] : $filePathData;
+        $absolutePath = '';
+
+        if ($fileItem instanceof TemporaryUploadedFile) {
+            $absolutePath = $fileItem->getRealPath();
+        } elseif (is_string($fileItem)) {
+            if (preg_match('/^([a-zA-Z]:\\\\|\\/)/', $fileItem)) {
+                $absolutePath = $fileItem;
+            } else {
+                $absolutePath = Storage::disk('local')->path($fileItem);
+            }
+        }
+
+        if (!$absolutePath || !file_exists($absolutePath)) {
+            throw new \Exception("Ficheiro não encontrado: " . $absolutePath);
+        }
+
+        return $absolutePath;
+    }
     private function fetchTables(): array
     {
-        //$schemas = Schema::connection('dynamic_extract')->getSchemas();
         $tables = Schema::connection('dynamic_extract')->getTables();
         $driver = DB::connection('dynamic_extract')->getDriverName();
 
-        //$schemas = Schema::getSchemas();
-        //$tables = Schema::getTables();
-        //$driver = DB::getDriverName();
-
-        $filteredTables = array_filter($tables, function ($table) use ($driver) {
-            // PostgreSQL separa as tabelas em schemas (auth, storage, public).
-            // Usar apenas o public
-            if ($driver === 'pgsql' && isset($table['schema'])) {
-                if ($table['schema'] !== 'public') {
-                    return false;
-                }
+        return array_map(function ($table) use ($driver) {
+            // No PostgreSQL, se a tabela não for do public, prefixamos com o schema (ex: auth.users)
+            if ($driver === 'pgsql' && isset($table['schema']) && $table['schema'] !== 'public') {
+                return $table['schema'] . '.' . $table['name'];
+            }
+            return $table['name'];
+        }, $tables);
+    }
+    public function getDefaultSelectedTables(array $allTables, string $driver = 'sqlite'): array
+    {
+        $filteredTables = array_filter($allTables, function ($tableName) use ($driver) {
+            if ($driver === 'pgsql' && str_contains($tableName, '.')) {
+                $parts = explode('.', $tableName);
+                if ($parts[0] !== 'public') return false;
             }
 
-            // Tabelas criadas pelo laravel
+            $cleanName = str_contains($tableName, '.') ? explode('.', $tableName)[1] : $tableName;
+
             $laravelInternalTables = [
-                'migrations',
-                'jobs',
-                'job_batches',
-                'failed_jobs',
-                'cache',
-                'cache_locks',
-                'password_reset_tokens',
-                'sessions',
+                'migrations', 'jobs', 'job_batches', 'failed_jobs',
+                'cache', 'cache_locks', 'password_reset_tokens', 'sessions',
             ];
 
-            // Ignorar tabelas do Laravel
-            if (in_array($table['name'], $laravelInternalTables)) {
-                return false;
-            }
+            if (in_array($cleanName, $laravelInternalTables)) return false;
 
             return true;
         });
 
-        // Devolve apenas os nomes das tabelas
-        return array_column($filteredTables, 'name');
+        return array_values($filteredTables);
     }
 
     // https://laravel-news.com/laravel-10-37-0#content-get-the-indexes-and-foreign-keys-of-a-table
@@ -247,7 +268,7 @@ class DatabaseExtractorService
     }
 
     //https://laravel-news.com/laravel-10-37-0#content-get-the-indexes-and-foreign-keys-of-a-table
-    private function fetchForeignKeys(string $tableName): array
+    public function fetchForeignKeys(string $tableName): array
     {
         $normalized = [];
         $fks = Schema::connection('dynamic_extract')->getForeignKeys($tableName);
@@ -266,4 +287,6 @@ class DatabaseExtractorService
         }
         return $normalized;
     }
+
+
 }

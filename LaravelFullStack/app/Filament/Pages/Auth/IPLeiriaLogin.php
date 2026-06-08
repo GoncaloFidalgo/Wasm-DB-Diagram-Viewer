@@ -21,7 +21,7 @@ class IPLeiriaLogin extends Login
         return $schema
             ->schema([
                 TextInput::make('user_number')
-                    ->label('Número de Utilizador ')
+                    ->label('Nome de Utilizador')
                     ->required()
                     ->autofocus()
                     ->extraInputAttributes(['tabindex' => 1]),

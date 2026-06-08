@@ -9,6 +9,8 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Filters\Filter; // <-- Add this import
+use Illuminate\Database\Eloquent\Builder; // <-- Add this import
 use Illuminate\Support\Facades\DB;
 
 class PublicDiagrams extends Page implements HasTable
@@ -19,7 +21,7 @@ class PublicDiagrams extends Page implements HasTable
     protected static ?string $navigationLabel = 'Diagramas Públicos';
     protected static ?string $title = 'Explorar Diagramas Públicos';
     protected static ?string $slug = 'explorar-diagramas';
-
+    protected static ?int $navigationSort = 2;
     protected string $view = 'filament.pages.public-diagrams';
 
     public function table(Table $table): Table
@@ -29,7 +31,6 @@ class PublicDiagrams extends Page implements HasTable
                 Diagram::query()
                     ->where('is_published', true)
                     ->where('visibility', 'public')
-                    ->whereNot('user_id', auth()->id())
                     ->where('version', function ($subquery) {
                         $subquery->select(DB::raw('MAX(version)'))
                             ->from('diagrams as d2')
@@ -57,6 +58,14 @@ class PublicDiagrams extends Page implements HasTable
                     ->dateTime('d/m/Y')
                     ->sortable(),
             ])
+            ->filters([
+                Filter::make('hide_mine')
+                    ->label('Ocultar os meus diagramas')
+                    ->toggle()
+                    ->default(true)
+                    ->query(fn (Builder $query): Builder => $query->where('user_id', '!=', auth()->id())),
+            ])
+            // ---------------------------
             ->recordActions([
                 Action::make('open')
                     ->label('Abrir')

@@ -12,6 +12,7 @@ mod wasm {
     #[wasm_bindgen(js_namespace = window)]
     extern "C" {
         fn saveDiagramState(json_data: &str);
+        fn openSyncModal(json_data: &str);
     }
 
     #[wasm_bindgen]
@@ -22,6 +23,8 @@ mod wasm {
         update_json: Arc<Mutex<Option<String>>>,
         update_read_only: Arc<Mutex<Option<bool>>>,
         export_trigger: Arc<Mutex<bool>>,
+        sync_trigger: Arc<Mutex<bool>>,
+        egui_ctx: Arc<Mutex<Option<egui::Context>>>,
     }
 
     #[wasm_bindgen]
@@ -35,6 +38,8 @@ mod wasm {
                 update_json: Arc::new(Mutex::new(None)),
                 update_read_only: Arc::new(Mutex::new(None)),
                 export_trigger: Arc::new(Mutex::new(false)),
+                sync_trigger: Arc::new(Mutex::new(false)),
+                egui_ctx: Arc::new(Mutex::new(None)),
             }
         }
         #[wasm_bindgen]
@@ -50,6 +55,13 @@ mod wasm {
             }
         }
         #[wasm_bindgen]
+        pub fn trigger_sync(&self) {
+            if let Ok(mut flag) = self.sync_trigger.lock() {
+                *flag = true;
+            }
+        }
+
+        #[wasm_bindgen]
         pub async fn start(&self, canvas: web_sys::HtmlCanvasElement, read_only: bool) -> Result<(), wasm_bindgen::JsValue> {
             eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
@@ -59,8 +71,10 @@ mod wasm {
 
             let save_trigger_clone = Arc::clone(&self.save_trigger);
             let export_trigger_clone = Arc::clone(&self.export_trigger);
+            let sync_trigger_clone = Arc::clone(&self.sync_trigger);
 
             let update_json_clone = Arc::clone(&self.update_json);
+            let ctx_clone = Arc::clone(&self.egui_ctx);
             let update_read_only_clone = Arc::clone(&self.update_read_only);
 
             self.runner
@@ -68,6 +82,10 @@ mod wasm {
                     canvas,
                     web_options,
                     Box::new(move |cc| {
+                        if let Ok(mut ctx_lock) = ctx_clone.lock() {
+                            *ctx_lock = Some(cc.egui_ctx.clone());
+                        }
+
                         let json_data = state_clone.lock().unwrap().clone();
                         Ok(Box::new(TemplateApp::new(
                             cc,
@@ -77,6 +95,7 @@ mod wasm {
                             update_json_clone,
                             update_read_only_clone,
                             export_trigger_clone,
+                            sync_trigger_clone,
                         )))
                     }),
                 )
@@ -94,6 +113,12 @@ mod wasm {
             if let Ok(mut update) = self.update_json.lock() {
                 *update = Some(json_data.to_string());
             }
+            // Força a desenhar os novos dados
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
+            }
         }
         // Alterar valor do read_only
         #[wasm_bindgen]
@@ -101,6 +126,12 @@ mod wasm {
             // Coloca o read_only no update para ser atualizado na app que está a correr
             if let Ok(mut update) = self.update_read_only.lock() {
                 *update = Some(read_only);
+            }
+            // Força a desenhar os novos dados
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
             }
         }
 
