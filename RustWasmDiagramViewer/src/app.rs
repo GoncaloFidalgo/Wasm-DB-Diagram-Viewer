@@ -16,6 +16,10 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window)]
     fn openSyncModal(json_data: &str);
+
+    #[wasm_bindgen(js_namespace = window)]
+    fn downloadTextFile(content: &str);
+
 }
 
 // --- Estruturas ---
@@ -45,6 +49,8 @@ pub struct TemplateApp {
     pub exporting: bool,
     #[serde(skip)]
     pub sync_trigger: Arc<Mutex<bool>>,
+    #[serde(skip)]
+    pub txt_export_trigger: Arc<Mutex<bool>>,
 }
 #[derive(PartialEq)]
 pub enum Selected {
@@ -304,6 +310,7 @@ impl Default for TemplateApp {
             export_trigger: Arc::new(Mutex::new(false)),
             exporting: false,
             sync_trigger: Arc::new(Mutex::new(false)),
+            txt_export_trigger: Arc::new(Mutex::new(false)),
         }
     }
 }
@@ -646,6 +653,7 @@ impl TemplateApp {
         update_read_only: Arc<Mutex<Option<bool>>>,
         export_trigger_clone: Arc<Mutex<bool>>,
         sync_trigger_clone: Arc<Mutex<bool>>,
+        txt_export_trigger_clone: Arc<Mutex<bool>>,
     ) -> Self {
         let mut app: TemplateApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
@@ -664,6 +672,7 @@ impl TemplateApp {
                     app_state.update_read_only = update_read_only.clone();
                     app_state.export_trigger = export_trigger_clone.clone();
                     app_state.sync_trigger = sync_trigger_clone.clone();
+                    app_state.txt_export_trigger = txt_export_trigger_clone.clone();
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -674,6 +683,7 @@ impl TemplateApp {
         app.save_trigger = save_trigger_clone;
         app.export_trigger = export_trigger_clone;
         app.sync_trigger = sync_trigger_clone;
+        app.txt_export_trigger = txt_export_trigger_clone;
         app
     }
 
@@ -1092,6 +1102,82 @@ impl TemplateApp {
             }
         }
     }
+
+    pub fn generate_text_export(&self) -> String {
+        let mut report = String::from("");
+
+        report.push_str("== TABELAS E RELAÇÕES ==\n");
+
+        for (table_idx, table) in self.tables.iter().enumerate() {
+            report.push_str(&format!("\nTabela: {}\n", table.name));
+
+            let t_desc = if table.description.is_empty() { "" } else { &table.description };
+            if !t_desc.is_empty() {
+                report.push_str(&format!("Descrição: {}\n", t_desc));
+            }
+
+            report.push_str("Colunas:\n");
+
+            for col in &table.columns {
+                let null_str = if col.nullable { "NULL" } else { "NOT NULL" };
+
+                let mut col_line = format!("  - {} | Tipo: {} | Restrição: {}",
+                                           col.name, col.column_type, null_str
+                );
+
+                if !col.key_type.is_empty() {
+                    col_line.push_str(&format!(" | Chave: {}", col.key_type));
+                }
+
+                if !col.description.is_empty() {
+                    col_line.push_str(&format!(" | Descrição: {}", col.description));
+                }
+
+                col_line.push('\n');
+                report.push_str(&col_line);
+            }
+
+            let mut table_relations = String::new();
+
+            for rel in &self.relations {
+                if rel.tables[0] == table_idx {
+                    let target_table = &self.tables[rel.tables[1]];
+
+                    let origin_col = &table.columns[rel.columns[0]];
+                    let target_col = &target_table.columns[rel.columns[1]];
+
+                    let is_nullable = origin_col.nullable;
+                    let is_unique = origin_col.unique;
+
+                    let min_card = if is_nullable { "0" } else { "1" };
+                    let max_card = if is_unique { "1" } else { "N" };
+                    let cardinalidade = format!("{}:{}", min_card, max_card);
+
+                    let r_desc = if rel.description.is_empty() { "" } else { &rel.description };
+
+                    table_relations.push_str(&format!(
+                        "  - Relação: {}\n    Ligação: {}  ->  {}.{}\n    Cardinalidade: {}\n",
+                        rel.name,
+                        origin_col.name,
+                        target_table.name, target_col.name,
+                        cardinalidade,
+                    ));
+
+                    if !r_desc.is_empty() {
+                        table_relations.push_str(&format!("    Descrição: {}\n", r_desc));
+                    }
+                    table_relations.push_str("\n");
+                }
+            }
+            
+            if !table_relations.is_empty() {
+                report.push_str("Relações:\n");
+                report.push_str(&table_relations);
+            }
+        }
+
+        report
+    }
 }
 
 fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool) {
@@ -1177,6 +1263,7 @@ impl eframe::App for TemplateApp {
                     new_app.update_read_only = self.update_read_only.clone();
                     new_app.export_trigger = self.export_trigger.clone();
                     new_app.sync_trigger = self.sync_trigger.clone();
+                    new_app.txt_export_trigger = self.txt_export_trigger.clone();
                     new_app.read_only = self.read_only;
                     new_app.apply_auto_layout();
 
@@ -1186,7 +1273,15 @@ impl eframe::App for TemplateApp {
                 Err(e) => log::error!("Falha ao aplicar novo JSON: {}", e),
             }
         }
-
+        // Exportar txt
+        #[cfg(target_arch = "wasm32")]
+        if let Ok(mut flag) = self.txt_export_trigger.lock() {
+            if *flag {
+                *flag = false;
+                let content = self.generate_text_export();
+                downloadTextFile(&content);
+            }
+        }
         // Verifica se o JS pediu para gravar
         #[cfg(target_arch = "wasm32")]
         if let Ok(mut flag) = self.save_trigger.lock() {
