@@ -134,6 +134,7 @@ class DatabaseExtractorService
                 'nullable' => !$column->notnull,
                 'description' => '',
                 'key_type' => $keyType,
+                'unique' => $column->unique,
             ];
         }
         return $formattedColumns;
@@ -247,11 +248,13 @@ class DatabaseExtractorService
         // Obter os indexes
         $indexes = Schema::connection('dynamic_extract')->getIndexes($tableName);
         $pkColumns = [];
-
+        $uniqueColumns = [];
         foreach ($indexes as $index) {
             if ($index['primary']) {
                 $pkColumns = $index['columns'];
-                break;
+            }
+            if ($index['unique']) {
+                $uniqueColumns = $index['columns'];
             }
         }
 
@@ -261,6 +264,7 @@ class DatabaseExtractorService
                 'type' => $col['type_name'], // e.g., 'varchar', 'integer'
                 'notnull' => !$col['nullable'],
                 'pk' => in_array($col['name'], $pkColumns),
+                'unique' => in_array($col['name'], $uniqueColumns),
             ];
         }
 
