@@ -91,7 +91,6 @@
 <script>
     window.hasUnsavedChanges = false;
     window.showCanvasLoader = function() {
-        console.log("A mostrar o loader...");
         const loader = document.getElementById('loading_text');
 
         if (loader) {
@@ -105,7 +104,6 @@
     };
 
     window.hideCanvasLoader = function() {
-        console.log("A esconder o loader...");
         const loader = document.getElementById('loading_text');
         if (loader) {
             loader.style.setProperty('display', 'none', 'important');
@@ -173,9 +171,6 @@
     window.addEventListener('trigger-rust-save', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_save();
-            // Simula um movimento do rato para acordar o eframe caso esteja parado
-            const canvas = document.getElementById('canvas_id');
-            if (canvas) canvas.dispatchEvent(new MouseEvent('mousemove'));
         }
     });
 
@@ -250,13 +245,28 @@
         Livewire.on('trigger-export-png', () => {
             if (window.wasmHandle) {
                 window.wasmHandle.trigger_export();
-                const canvas = document.getElementById('canvas_id');
-                if (canvas) {
-                    canvas.dispatchEvent(new MouseEvent('mousemove'));
-                }
+            }
+        });
+        Livewire.on('trigger-export-txt', (data) => {
+            window.diagramExportName = data.name;
+
+            if (window.wasmHandle) {
+                window.wasmHandle.trigger_txt_export();
             }
         });
     });
+    window.diagramExportName = 'diagrama';
+    window.downloadTextFile = function(content) {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `${window.diagramExportName}.txt`;
+        link.href = url;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
     window.addEventListener('trigger-rust-sync', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_sync();
