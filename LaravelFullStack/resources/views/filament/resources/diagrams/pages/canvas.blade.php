@@ -27,7 +27,6 @@
         left: 0;
         width: 100%;
         height: 100%;
-
     }
 
     #wasm-container {
@@ -208,34 +207,73 @@
             return;
         }
 
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
+        // Descobrir os limites reais do diagrama (Bounding Box)
+        let minX = width, minY = height, maxX = 0, maxY = 0;
+        let hasContent = false;
 
-        // Copia segura da memória do WebAssembly
+        // Percorre todos os pixeis. Se o Canal Alpha (índice 3) for maior que 0, não é transparente
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const alpha = pixelsArray[(y * width + x) * 4 + 3];
+                if (alpha > 0) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    hasContent = true;
+                }
+            }
+        }
+
+        if (!hasContent) {
+            console.warn("O diagrama está completamente vazio!");
+            return;
+        }
+
+        // Adiciona uma margem de segurança de 20px ao redor do diagrama
+        const padding = 20;
+        minX = Math.max(0, minX - padding);
+        minY = Math.max(0, minY - padding);
+        maxX = Math.min(width, maxX + padding);
+        maxY = Math.min(height, maxY + padding);
+
+        const cropWidth = maxX - minX;
+        const cropHeight = maxY - minY;
+
+        // Colocar os pixeis originais num canvas temporário
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        const tempCtx = tempCanvas.getContext('2d');
+
         const clampedArray = new Uint8ClampedArray(pixelsArray.buffer, pixelsArray.byteOffset, pixelsArray.length);
         const imageData = new ImageData(clampedArray, width, height);
-        ctx.putImageData(imageData, 0, 0);
+        tempCtx.putImageData(imageData, 0, 0);
 
+        // Desenhar APENAS a parte recortada no canvas Final
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = cropWidth;
+        finalCanvas.height = cropHeight;
+        const finalCtx = finalCanvas.getContext('2d');
+
+        finalCtx.drawImage(tempCanvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+        // Exportar o Canvas Final Limpo
         try {
-            // Tenta usar Blob (Mais rápido e consome menos memória)
-            canvas.toBlob(function (blob) {
+            finalCanvas.toBlob(function (blob) {
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.download = '{{ $this->diagramName }}.png';
                 link.href = url;
-                document.body.appendChild(link); // Necessário no Firefox
+                document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 setTimeout(() => URL.revokeObjectURL(url), 150);
             }, 'image/png');
         } catch (e) {
-            console.warn("Blob bloqueado por falta de HTTPS. A usar DataURL de segurança...");
-            // Ignora o bloqueio de segurança
             const link = document.createElement('a');
             link.download = '{{ $this->diagramName }}.png';
-            link.href = canvas.toDataURL('image/png');
+            link.href = finalCanvas.toDataURL('image/png');
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);

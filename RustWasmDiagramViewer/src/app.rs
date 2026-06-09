@@ -1169,7 +1169,7 @@ impl TemplateApp {
                     table_relations.push_str("\n");
                 }
             }
-            
+
             if !table_relations.is_empty() {
                 report.push_str("Relações:\n");
                 report.push_str(&table_relations);
@@ -1314,8 +1314,15 @@ impl eframe::App for TemplateApp {
                 }
             }
         }
+        let mut frame = egui::Frame::default();
 
-        CentralPanel::default().show(ctx, |ui| {
+        if self.exporting {
+            frame = frame.fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE);
+        } else {
+            frame = frame.fill(ctx.style().visuals.panel_fill);
+        }
+
+        CentralPanel::default().frame(frame).show(ctx, |ui| {
             let mut scene_transform =
                 ui.ctx()
                     .data(|d| match d.get_temp(Id::new("scene_transform")) {
@@ -1406,7 +1413,9 @@ impl eframe::App for TemplateApp {
                     }
                 }
             }
+
             if !self.exporting {
+
                 // Remover todos os objetos selecionados da lista
                 if bg_response.clicked() && !ctx.input(|i| {i.modifiers.command_only()}) {
                     self.selected.clear();
@@ -1660,7 +1669,14 @@ impl eframe::App for TemplateApp {
             })
         });
     }
-
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        if self.exporting {
+            // Se estiver a exportar, o fundo do ecrã fica 100% transparente [R, G, B, Alpha]
+            [0.0, 0.0, 0.0, 0.0]
+        } else {
+            _visuals.panel_fill.to_normalized_gamma_f32()
+        }
+    }
     /// Guarda o estado da app antes de ser terminada
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
