@@ -1123,8 +1123,8 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         if !ui.input(|i| {i.modifiers.command_only()}) || read_only {selected.clear();}
         toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
     }
-    let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
-    let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
+    let popup_first_id = Id::new(("popup", rela_idx, "first"));
+    let popup_second_id = Id::new(("popup", rela_idx, "second"));
     if !read_only {
         popup_relation_create(&rel_first_response, popup_first_id, relation, selected);
         popup_relation_create(&rel_second_response, popup_second_id, relation, selected);
@@ -1165,7 +1165,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         let (p1, p2) = (pair[0], pair[1]);
         let is_vertical = seg_idx % 2 == 0;
 
-        let seg_id = ui.id().with(("seg", rela_idx, seg_idx));
+        let seg_id = Id::new(("seg", rela_idx, seg_idx));
 
         // Area visual, largura da linha
         let visual_rect = Rect::from_two_pos(p1, p2).expand(line_width / 2.0);
@@ -1175,7 +1175,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         let interact_rect = visual_rect.expand2(hit_padding);
 
         let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
-        let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
+        let popup_id = Id::new(("popup", rela_idx, seg_idx));
 
         if seg_response.clicked() {
             if read_only {
@@ -1246,10 +1246,10 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
             }
 
             if seg_idx != 0 {
-                let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
+                let pt_id = Id::new(("pt", rela_idx, seg_idx));
                 let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
                 let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
-                let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
+                let pt_popup_id = Id::new(("popup_pt", rela_idx, seg_idx));
 
                 popup_relation_create(&pt_response, pt_popup_id, relation, selected);
 
