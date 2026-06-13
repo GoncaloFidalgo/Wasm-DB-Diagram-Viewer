@@ -923,7 +923,7 @@ impl TemplateApp {
                 )
             }).count() >= 1 {
                 Area::new(Id::new((rela_idx, "area")))
-                    .order(Order::Foreground)
+                    .order(Order::Middle)
                     .default_size(ui.clip_rect().size())
                     .show(ui.ctx(), |ui| {
                         draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation);
@@ -1117,8 +1117,8 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
 
     draw_visual_relation(painter, &pts, selected.contains(&Selected::Relation { relation: rela_idx, segment: None }), line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx, unique, nullable);
 
-    let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
-    let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
+    let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click_and_drag());
+    let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click_and_drag());
     if rel_first_response.clicked() || rel_second_response.clicked() {
         if !ui.input(|i| {i.modifiers.command_only()}) || read_only {selected.clear();}
         toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
@@ -1128,6 +1128,33 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
     if !read_only {
         popup_relation_create(&rel_first_response, popup_first_id, relation, selected);
         popup_relation_create(&rel_second_response, popup_second_id, relation, selected);
+        if rel_first_response.drag_started() || rel_second_response.drag_started() {
+            let item_rela = Selected::Relation { relation: rela_idx, segment: None };
+            if !selected.contains(&item_rela) {
+                if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                toggle_selected(selected, item_rela, relation.relation_segments.len(), read_only);
+            } else {
+                toggle_selected(selected, item_rela, relation.relation_segments.len(),read_only);
+                toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
+            }
+        }
+        if rel_first_response.hovered() || rel_second_response.hovered() {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+        }
+        if rel_first_response.dragged() || rel_second_response.dragged() {
+            Popup::close_all(ui.ctx());
+            let delta = (rel_first_response.drag_delta() / scene_transform.scaling) + (rel_second_response.drag_delta() / scene_transform.scaling);
+            *delta_used = delta;
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+        }
+        if rel_first_response.drag_stopped() {
+            Popup::open_id(ui.ctx(), popup_first_id);
+            *drag_stopped = true;
+        }
+        if rel_second_response.drag_stopped() {
+            Popup::open_id(ui.ctx(), popup_second_id);
+            *drag_stopped = true;
+        }
         
         if !front_line && rel_first_response.secondary_clicked() {
             selected.clear();
@@ -1204,8 +1231,9 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
 
             if selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) {
                 painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
-            } else if seg_response.hovered() && !selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
+            }
+            if seg_response.hovered() {
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
             }
 
             // --- Mudanças de estado (Start / End Drag / Right Click) ---
@@ -1221,7 +1249,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
 
             // --- Arrastar ---
             if seg_response.dragged() {
-                Popup::close_id(ui.ctx(), popup_id);
+                Popup::close_all(ui.ctx());
                 let delta = seg_response.drag_delta() / scene_transform.scaling;
                 *delta_used = delta;
                 ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
@@ -1262,6 +1290,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
 
                 if pt_response.hovered() {
                     painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
+                    ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
 
                     if pt_response.dragged() {
                         let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
