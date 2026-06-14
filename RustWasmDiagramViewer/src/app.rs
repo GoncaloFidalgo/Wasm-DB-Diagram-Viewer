@@ -1535,6 +1535,48 @@ impl eframe::App for TemplateApp {
                     self.selected.clear();
                 }
 
+                if self.selected.len() == 1 {
+                    match &mut self.selected[0] {
+                        Selected::Relation { .. } => {}
+                        Selected::Table { table, column } => {
+                            if ctx.input(|i| {i.key_pressed(Key::ArrowRight)}) {
+                                *table = (*table + 1) % self.tables.len();
+                                *column = None;
+                            }
+                            if ctx.input(|i| {i.key_pressed(Key::ArrowLeft)}) {
+                                *table = (*table + self.tables.len() - 1) % self.tables.len();
+                                *column = None;
+                            }
+                            match column {
+                                Some(col_idx) => {
+                                    if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
+                                        if *col_idx != self.tables[*table].columns.len()-1 {
+                                            *col_idx += 1;
+                                        } else {
+                                            *column = None;
+                                        }
+                                    } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
+                                        if *col_idx != 0 {
+                                            *col_idx -= 1;
+                                        } else {
+                                            *column = None;
+                                        }
+                                    }
+                                }
+                                None => {
+                                    if self.tables[*table].columns.len() != 0 {
+                                        if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
+                                            *column = Some(0);
+                                        } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
+                                            *column = Some(self.tables[*table].columns.len()-1);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Colocar o background a controlar a Scene (PanAndDrag)
                 Scene::new()
                     .drag_pan_buttons(if self.read_only {DragPanButtons::all()} else {DragPanButtons::all().difference(DragPanButtons::PRIMARY)})
