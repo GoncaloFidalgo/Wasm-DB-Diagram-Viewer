@@ -109,26 +109,36 @@
         }
     };
 
-    window.handleVersionChange = function(event, element, previousValue) {
-        console.log("Dropdown alterado!", previousValue, "->", element.value);
+window.handleVersionChange = function(event, element, previousValue) {
 
-        if (window.hasUnsavedChanges) {
-            if (!confirm(`Tem alterações não guardadas. Quer mesmo mudar de versão e perder o progresso?`)) {
-                event.stopImmediatePropagation();
-                event.preventDefault();
-                element.value = previousValue;
-                return previousValue;
+    if (window.hasUnsavedChanges) {
+        if (confirm(`Tem alterações não guardadas. Deseja guardá-las antes de mudar de versão?`)) {
+
+            event.stopImmediatePropagation();
+            event.preventDefault();
+
+            window.pendingVersion = element.value;
+            window.pendingSelectElement = element;
+
+            element.value = previousValue;
+
+            if (window.wasmHandle) {
+                window.wasmHandle.trigger_save();
             }
+
+            window.hasUnsavedChanges = false;
+            return previousValue;
+        } else {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            element.value = previousValue;
+            return previousValue;
         }
+    }
 
-        window.hasUnsavedChanges = false;
-
-        if (typeof window.showCanvasLoader === "function") {
-            window.showCanvasLoader();
-        }
-
-        return element.value;
-    };
+    if (typeof window.showCanvasLoader === "function") window.showCanvasLoader();
+    return element.value;
+};
 
 </script>
 <script type="module">
@@ -193,16 +203,29 @@ if (!window.diagramListenersBound) {
     window.diagramListenersBound = true;
 }
 
+window.saveDiagramState = function (jsonString) {
+    Livewire.dispatch('save-diagram', { jsonPayload: jsonString });
 
-    window.saveDiagramState = function (jsonString) {
-        //console.timeEnd("LivewireSave");
-        Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
+// if it was the version change that triggered the save
+if (window.pendingVersion && window.pendingSelectElement) {
+        setTimeout(() => {
+            let selectElement = window.pendingSelectElement;
+            selectElement.value = window.pendingVersion;
+            selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+            window.pendingVersion = null;
+            window.pendingSelectElement = null;
+        }, 500);
+
+    } else {
         new FilamentNotification()
             .title('Sucesso!')
             .body('Diagrama guardado com sucesso.')
             .success()
             .send();
-    };
+    }
+};
+
     document.addEventListener('livewire:navigated', initWasm, {once: true});
 
     if (document.readyState === 'complete') {
