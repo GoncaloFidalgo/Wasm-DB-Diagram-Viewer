@@ -20,8 +20,10 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\Width;
 use Filament\Notifications\Notification;
+use Illuminate\Support\HtmlString;
 use Livewire\Attributes\On;
 
 class DiagramViewer extends Page
@@ -88,7 +90,6 @@ class DiagramViewer extends Page
                     ->schema([
                         Flex::make([
                             Flex::make([
-
                                 Action::make('back')
                                     ->label('Diagramas')
                                     ->icon('heroicon-m-arrow-left')
@@ -113,16 +114,13 @@ class DiagramViewer extends Page
                                             Action::make('edit_metadata')->visible(fn() => !$this->isPublished)
                                         ),
                                     ]),
-                            ])->alignStart()->grow()->gap(4)
-                            ,
+                            ])->alignStart()->grow(false),
 
                             Flex::make([
                                 Select::make('selectedVersionId')
                                     ->hiddenLabel()
+                                    ->live()
                                     ->selectablePlaceholder(false)
-                                    ->extraAttributes([
-                                        'style' => 'min-width: 180px; max-width: 250px;'
-                                    ])
                                     ->extraInputAttributes([
                                         'x-data' => '{ previousValue: null }',
                                         'x-init' => 'previousValue = $el.value',
@@ -137,13 +135,12 @@ class DiagramViewer extends Page
                                         }
 
                                         return $query->get()->mapWithKeys(function ($d) {
-                                            $label = 'Versão ' . $d->version;
-                                            //if ($d->is_published) $label .= ' (Publicada)';
+                                            $label = 'Publicação ' . $d->version;
+                                            if (!$d->is_published) $label = 'Atual';
                                             //if ($d->id === $this->recordId) $label .= ' - Atual';
                                             return [$d->id => $label];
                                         });
                                     })
-                                    ->live()
                                     ->afterStateUpdated(function ($state, DiagramViewer $livewire) {
                                         $diagram = Diagram::find($state);
 
@@ -158,6 +155,13 @@ class DiagramViewer extends Page
                                             isReadOnly: $livewire->isPublished,
                                             hasUnsavedChanges: false
                                         );
+                                    })->visible(function () {
+                                        $hasPublishedVersion = Diagram::where('diagram_id', $this->diagramId)
+                                            ->where('is_published', true)
+                                            ->exists();
+
+                                        // Só mostra o botão se houver versoes
+                                        return $hasPublishedVersion;
                                     }),
 
                                 Actions::make([
@@ -165,45 +169,20 @@ class DiagramViewer extends Page
                                         ->label('Nova Versão')
                                         ->icon('heroicon-m-document-plus')
                                         ->color('primary')
+//                                        ->schema([])
+//                                        ->modalWidth('md')
+//                                        ->modalFooterActionsAlignment(Alignment::Center)
+//                                        ->modalAlignment(Alignment::Center)
                                         ->requiresConfirmation()
-                                        ->modalHeading('Criar nova versão a partir da mais recente ?')
-                                        ->modalDescription(' ')
-                                        ->modalSubmitActionLabel('Sim, criar')
+                                        ->modalIcon('')
+                                        ->modalHeading('Criar versão')
+                                        ->modalDescription('Quer criar uma nova versão a partir da mais recente?')
+                                        ->modalSubmitActionLabel('Sim')
                                         ->modalCancelActionLabel('Cancelar')
-                                        ->action(function () {
-                                            $latest = Diagram::where('diagram_id', $this->diagramId)
-                                                ->orderByDesc('version')
-                                                ->first();
-                                            $newVersionNumber = $latest->version + 1;
-
-                                            $newDiagram = Diagram::create([
-                                                'diagram_id' => $latest->diagram_id,
-                                                'name' => $latest->name,
-                                                'description' => $latest->description,
-                                                'diagram' => $latest->diagram,
-                                                'user_id' => $latest->user_id,
-                                                'version' => $newVersionNumber,
-                                                'visibility' => 'link',
-                                                'is_published' => false,
-                                            ]);
-
-
-                                            $this->recordId = $newDiagram->id;
-                                            $this->selectedVersionId = $newDiagram->id;
-                                            $this->isPublished = false;
-
-                                            $this->dispatch('reload-wasm-schema',
-                                                schema: json_encode($newDiagram->diagram),
-                                                isReadOnly: false,
-                                                hasUnsavedChanges: false
-                                            );
-
-                                            Notification::make()
-                                                ->title('Nova versão criada!')
-                                                ->body('')
-                                                ->success()
-                                                ->send();
-                                        })
+                                        ->modalCloseButton(false)
+                                        ->closeModalByClickingAway(false)
+                                        ->closeModalByEscaping(false)
+                                        ->action(fn () => $this->createNewVersion())
                                         ->visible(function () {
                                             // 1. Se não for o dono ou a versão atual não estiver publicada, esconde.
                                             if (!$this->isOwner || !$this->isPublished) {
@@ -219,7 +198,7 @@ class DiagramViewer extends Page
                                             return !$hasDraft;
                                         }),
                                 ]),
-                            ])->alignBetween()->gap(4)->grow(),
+                            ])->alignBetween()->grow(),
 
                             Flex::make([
 
@@ -263,7 +242,6 @@ class DiagramViewer extends Page
                                 ])
                                     ->alignEnd(),
                             ])
-
                         ])
                             ->alignBetween()
                             ->gap(4)->grow()
@@ -304,7 +282,40 @@ class DiagramViewer extends Page
     {
         $this->currentDiagramJsonStr = $jsonString;
     }
+    public function createNewVersion(): void
+    {
+        $latest = Diagram::where('diagram_id', $this->diagramId)
+            ->orderByDesc('version')
+            ->first();
 
+        $newVersionNumber = $latest->version + 1;
+
+        $newDiagram = Diagram::create([
+            'diagram_id' => $latest->diagram_id,
+            'name' => $latest->name,
+            'description' => $latest->description,
+            'diagram' => $latest->diagram,
+            'user_id' => $latest->user_id,
+            'version' => $newVersionNumber,
+            'visibility' => 'link',
+            'is_published' => false,
+        ]);
+
+        $this->recordId = $newDiagram->id;
+        $this->selectedVersionId = $newDiagram->id;
+        $this->isPublished = false;
+
+        $this->dispatch('reload-wasm-schema',
+            schema: json_encode($newDiagram->diagram),
+            isReadOnly: false,
+            hasUnsavedChanges: false
+        );
+
+        Notification::make()
+            ->title('Nova versão criada!')
+            ->success()
+            ->send();
+    }
     public function processSyncExtraction(Get $get, Set $set, $component): void
     {
         $engine = $get('engine');
