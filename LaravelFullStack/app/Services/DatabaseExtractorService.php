@@ -10,7 +10,11 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class DatabaseExtractorService
 {
-
+    protected const IGNORED_LARAVEL_TABLES = [
+        'migrations', 'jobs', 'job_batches', 'failed_jobs',
+        'cache', 'cache_locks', 'password_reset_tokens', 'sessions',
+        'telescope_entries', 'telescope_entries_tags', 'telescope_monitoring',
+    ];
     public function extractTables(?string $filePath, string $engine = 'sqlite', array $state = []): array
     {
         $this->setupConnection($filePath, $engine, $state);
@@ -215,24 +219,19 @@ class DatabaseExtractorService
             return $table['name'];
         }, $tables);
     }
+
     public function getDefaultSelectedTables(array $allTables, string $driver = 'sqlite'): array
     {
         $filteredTables = array_filter($allTables, function ($tableName) use ($driver) {
+            // Check schema if PostgreSQL
             if ($driver === 'pgsql' && str_contains($tableName, '.')) {
-                $parts = explode('.', $tableName);
-                if ($parts[0] !== 'public') return false;
+                if (!str_starts_with($tableName, 'public.')) return false;
             }
 
+            // Check schema for other dbs
             $cleanName = str_contains($tableName, '.') ? explode('.', $tableName)[1] : $tableName;
 
-            $laravelInternalTables = [
-                'migrations', 'jobs', 'job_batches', 'failed_jobs',
-                'cache', 'cache_locks', 'password_reset_tokens', 'sessions',
-            ];
-
-            if (in_array($cleanName, $laravelInternalTables)) return false;
-
-            return true;
+            return !in_array($cleanName, self::IGNORED_LARAVEL_TABLES, true);
         });
 
         return array_values($filteredTables);
