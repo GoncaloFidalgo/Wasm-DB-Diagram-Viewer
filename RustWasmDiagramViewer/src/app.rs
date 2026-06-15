@@ -370,6 +370,7 @@ impl Table {
         mut scene_transform: &mut TSTransform,
         read_only: bool,
         selected: &mut Vec<Selected>,
+        relations: &Vec<Relation>,
     ) -> (Vec2, Option<usize>) {
         let table_width = ctx.fonts_mut(|f| {
             let header_width = f
@@ -412,10 +413,41 @@ impl Table {
 
         let mut table_selected = false;
         let mut column_selected = None;
+        let mut highlight_table = false;
+        let mut highlight_columns: Vec<usize> = Vec::new();
         for select in selected.iter() {
             match select {
-                Selected::Relation { .. } => {}
+                Selected::Relation { relation, .. } => {
+                    if relations[*relation].tables[0] == id || relations[*relation].tables[1] == id {
+                        highlight_table = true;
+                        let col_idx = if relations[*relation].tables[0] == id {relations[*relation].columns[0]} else {relations[*relation].columns[1]};
+                        if !highlight_columns.contains(&col_idx) {
+                            highlight_columns.push(col_idx);
+                        }
+                    }
+                }
                 Selected::Table { table, column } => {
+                    if let Some(column) = *column {
+                        for relation in relations {
+                            if relation.tables[0] == *table && relation.columns[0] == column {
+                                if relation.tables[1] == id {
+                                    highlight_table = true;
+                                    let col_idx = relation.columns[1];
+                                    if !highlight_columns.contains(&col_idx) {
+                                        highlight_columns.push(col_idx);
+                                    }
+                                }
+                            } else if relation.tables[1] == *table && relation.columns[1] == column {
+                                if relation.tables[0] == id {
+                                    highlight_table = true;
+                                    let col_idx = relation.columns[0];
+                                    if !highlight_columns.contains(&col_idx) {
+                                        highlight_columns.push(col_idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if *table == id {
                         table_selected = true;
                         column_selected = *column;
@@ -432,7 +464,7 @@ impl Table {
                 ui.set_clip_rect(Rect::EVERYTHING);
                 Frame::new()
                     .fill(TABLE_BG)
-                    .stroke(Stroke::new(2.0, if table_selected {Color32::BLUE} else {TABLE_BORDER}))
+                    .stroke(Stroke::new(2.0, if table_selected {Color32::BLUE} else if highlight_table {Color32::GREEN} else {TABLE_BORDER}))
                     .shadow(Shadow {
                         offset: [0, 6],
                         blur: 18,
@@ -447,7 +479,7 @@ impl Table {
                             }
                             ui.add_space(2.0);
                             for (col_idx, column) in self.columns.iter().enumerate() {
-                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}).clicked()  {
+                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}, highlight_columns.contains(&col_idx)).clicked()  {
                                     if !ctx.input(|i| {i.modifiers.command_only()}) || read_only {
                                         selected.clear();
                                         toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0, read_only);
@@ -527,7 +559,7 @@ impl Table {
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool) -> Response {
+    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool, highlight_for_relation: bool) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, COL_SIZE),
             Sense::click(),
@@ -544,6 +576,8 @@ impl Column {
 
         if col_selected {
             ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgb_additive(0, 0, 60));
+        } else if highlight_for_relation {
+            ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgb(0, 60, 0));
         }
 
         if response.hovered() {
@@ -975,8 +1009,26 @@ impl TemplateApp {
 }
 
 fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation) {
+    let mut highlight_relation = false;
+    for select in selected.iter() {
+        match select {
+            Selected::Relation { .. } => {}
+            Selected::Table { table, column } => {
+                if let Some(column) = *column {
+                    if relation.tables[0] == *table && relation.columns[0] == column {
+                        highlight_relation = true;
+                    } else if relation.tables[1] == *table && relation.columns[1] == column {
+                        highlight_relation = true;
+                    }
+                }
+            }
+        }
+    }
+    
     let line_stroke = if selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
         Stroke::new(line_width, Color32::BLUE)
+    } else if highlight_relation {
+        Stroke::new(line_width, Color32::GREEN)
     } else {
         Stroke::new(line_width, Color32::from_gray(80))
     };
@@ -1571,7 +1623,7 @@ impl eframe::App for TemplateApp {
                             }
 
                             // Desenhar uma area de seleção
-                            painter.rect(selection_area_rect, CornerRadius::ZERO, Color32::from_rgb(160, 160, 255), Stroke::new(3.0, Color32::BLUE), StrokeKind::Middle);
+                            painter.rect(selection_area_rect, CornerRadius::ZERO, Color32::from_rgb(200, 200, 255), Stroke::new(1.0, Color32::BLUE), StrokeKind::Middle);
                         }
                     }
 
@@ -1644,7 +1696,7 @@ impl eframe::App for TemplateApp {
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
                 let old_transform = self.scene_transform;
-                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected);
+                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected, &self.relations);
                 if delta_received != Vec2::ZERO {
                     delta_used = delta_received;
                 }
