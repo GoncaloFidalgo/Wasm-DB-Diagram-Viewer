@@ -49,6 +49,7 @@ pub struct TemplateApp {
     pub exporting: bool,
     #[serde(skip)]
     pub sync_trigger: Arc<Mutex<bool>>,
+    pub scene_transform: TSTransform,
     #[serde(skip)]
     pub txt_export_trigger: Arc<Mutex<bool>>,
 }
@@ -310,6 +311,7 @@ impl Default for TemplateApp {
             export_trigger: Arc::new(Mutex::new(false)),
             exporting: false,
             sync_trigger: Arc::new(Mutex::new(false)),
+            scene_transform: TSTransform::IDENTITY,
             txt_export_trigger: Arc::new(Mutex::new(false)),
         }
     }
@@ -497,7 +499,7 @@ impl Table {
                             }
                         }
                         Scene::new()
-                            .drag_pan_buttons(DragPanButtons::empty())
+                            .drag_pan_buttons(if read_only {DragPanButtons::all()} else {DragPanButtons::empty()})
                             .zoom_range(Rangef::new(0.1, 2.0))
                             .register_pan_and_zoom(ui, &mut area_response, &mut scene_transform);
                     });
@@ -708,379 +710,257 @@ impl TemplateApp {
             }
         }
     }
+
+    fn draw_zoom_area(&mut self, ctx: &Context, ui: &Ui, bg_response: Response) {
+        Area::new(Id::new("DragValue_zoom"))
+            .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                Frame::default()
+                    .fill(Color32::WHITE)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .corner_radius(5.0)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+
+                        ui.visuals_mut().override_text_color = Some(Color32::BLACK);
+
+                        let center_vec = bg_response.rect.center().to_vec2();
+                        let old_scale = self.scene_transform.scaling;
+                        let mut new_scale = old_scale;
+
+                        ui.horizontal(|ui| {
+                            if ui.button(" - ").clicked() {
+                                new_scale = (new_scale - 0.1).max(0.1);
+                            }
+
+                            ui.add(Slider::new(&mut new_scale, 0.1 ..= 2.0)
+                                .show_value(true)
+                                .step_by(0.01));
+
+                            if ui.button(" + ").clicked() {
+                                new_scale = (new_scale + 0.1).min(5.0);
+                            }
+                        });
+
+                        if old_scale != new_scale {
+                            self.scene_transform.scaling = new_scale;
+                            let world_vec = (center_vec - self.scene_transform.translation) / old_scale;
+                            self.scene_transform.translation += world_vec * (old_scale - self.scene_transform.scaling);
+                        }
+                    });
+            });
+        
+        let screen_rect = ui.clip_rect();
+        Area::new(Id::new("CenterScreen_button"))
+            .anchor(Align2::CENTER_TOP, vec2(-130.0, 20.0))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                Frame::default()
+                    .fill(Color32::WHITE)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .corner_radius(5.0)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+
+                        ui.visuals_mut().override_text_color = Some(Color32::BLACK);
+
+                        if ui.button("◎").clicked() {
+                            center_screen(ctx, screen_rect, &mut self.scene_transform, &self.tables, &self.relations, false);
+                        }
+                    });
+            });
+    }
+
+    fn draw_edit_window(&mut self, ctx: &Context) {
+        Window::new("Details")
+            .order(Order::Tooltip)
+            .default_size(vec2(320.0, 350.0))
+            .min_height(150.0)
+            .show(ctx, |ui| {
+                if let Some(selected) = self.selected.last() {
+                    match selected {
+                        Selected::Table { table, column } => {
+                            match column {
+                                None => {
+                                    let t = &mut self.tables[*table];
+
+                                    // --- Table grid ---
+                                    Grid::new("table_grid")
+                                        .num_columns(2)
+                                        .spacing([40.0, 8.0])
+                                        .show(ui, |ui| {
+                                            ui.label(RichText::new("Type").strong().size(16.5));
+                                            ui.label(RichText::new("Table").size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Name").strong().size(16.5));
+                                            ui.label(RichText::new(&t.name).size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Columns").strong().size(16.5));
+                                            ui.label(RichText::new(t.columns.len().to_string()).size(16.5));
+                                            ui.end_row();
+                                        });
+
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.add_space(5.0);
+
+                                    // --- Description ---
+                                    ui.label(RichText::new("Description:").size(19.0));
+                                    ui.add_enabled_ui(!self.read_only, |ui| {
+                                        ui.add_sized(
+                                            ui.available_size(),
+                                            TextEdit::multiline(&mut t.description)
+                                                .font(FontId::proportional(19.0))
+                                        );
+                                    });
+                                },
+                                Some(column_idx) => {
+                                    // Save table name by clonning
+                                    let table_name = self.tables[*table].name.clone();
+
+                                    // Get the column without memory conflicts
+                                    let c = &mut self.tables[*table].columns[*column_idx];
+
+                                    // --- Column grid ---
+                                    Grid::new("column_grid")
+                                        .num_columns(2)
+                                        .spacing([40.0, 8.0])
+                                        .show(ui, |ui| {
+                                            ui.label(RichText::new("Type").strong().size(16.5));
+                                            ui.label(RichText::new("Column").size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Table").strong().size(16.5));
+                                            ui.label(RichText::new(table_name).size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Name").strong().size(16.5));
+                                            ui.label(RichText::new(&c.name).size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Data Type").strong().size(16.5));
+                                            ui.label(RichText::new(&c.column_type).monospace().size(16.5).color(Color32::from_gray(120)));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Key").strong().size(16.5));
+                                            let (key_text, key_color) = match c.key_type.as_str() {
+                                                "PK" => ("Primary Key", Color32::from_rgb(255, 170, 0)),
+                                                "FK" => ("Foreign Key", Color32::from_rgb(100, 150, 255)),
+                                                _ => ("No key", Color32::from_gray(130)),
+                                            };
+                                            ui.label(RichText::new(key_text).color(key_color).size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Nullable").strong().size(16.5));
+                                            let (null_text, null_color) = if c.nullable {
+                                                ("Yes", Color32::from_rgb(100, 160, 100))
+                                            } else {
+                                                ("No", Color32::from_rgb(180, 85, 85))
+                                            };
+                                            ui.label(RichText::new(null_text).color(null_color).size(16.5));
+                                            ui.end_row();
+
+                                            ui.label(RichText::new("Unique").strong().size(16.5));
+                                            let (null_text, null_color) = if c.unique {
+                                                ("Yes", Color32::from_rgb(100, 160, 100))
+                                            } else {
+                                                ("No", Color32::from_rgb(180, 85, 85))
+                                            };
+                                            ui.label(RichText::new(null_text).color(null_color).size(16.5));
+                                            ui.end_row();
+
+                                        });
+
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.add_space(5.0);
+
+                                    // --- Description ---
+                                    ui.label(RichText::new("Description:").size(19.0));
+                                    ui.add_enabled_ui(!self.read_only, |ui| {
+                                        ui.add_sized(
+                                            ui.available_size(),
+                                            TextEdit::multiline(&mut c.description)
+                                                .font(FontId::proportional(19.0))
+                                        );
+                                    });
+                                }
+                            }
+                        },
+                        Selected::Relation { relation, .. } => {
+                            let r = &mut self.relations[*relation];
+
+                            // --- Relation grid ---
+                            Grid::new("relation_grid")
+                                .num_columns(2)
+                                .spacing([40.0, 8.0])
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new("Type").strong().size(16.5));
+                                    ui.label(RichText::new("Relation").size(16.5));
+                                    ui.end_row();
+
+                                    ui.label(RichText::new("Name").strong().size(16.5));
+                                    ui.label(RichText::new(&r.name).size(16.5));
+                                    ui.end_row();
+                                });
+
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.add_space(5.0);
+
+                            // --- Description ---
+                            ui.label(RichText::new("Description:").size(19.0));
+                            ui.add_enabled_ui(!self.read_only, |ui| {
+                                ui.add_sized(
+                                    ui.available_size(),
+                                    TextEdit::multiline(&mut r.description)
+                                        .font(FontId::proportional(19.0))
+                                );
+                            });
+                        }
+                    }
+                } else {
+                    // --- Empty state ---
+                    ui.label(
+                        RichText::new("No object selected.")
+                            .size(20.0)
+                            .strong()
+                    );
+
+                    ui.allocate_space(ui.available_size());
+                }
+            });
+    }
+
     fn draw_relations(&mut self, ui: &mut Ui, painter: &Painter, scene_transform: TSTransform) {
         let line_width: f32 = 2.5 * scene_transform.scaling;
         let table_proximity_limit: f32 = TABLE_PROXIMITY_LIMIT * scene_transform.scaling;
         let notation_size: f32 = NOTATION_SIZE * scene_transform.scaling;
         let interact_hitbox_size: f32 = 14.0 * scene_transform.scaling;
 
-        struct RelationToDraw {
-            pts: Vec<Pos2>,
-            line_stroke: Stroke,
-            table_proximity_limit: f32,
-            notation_size: f32,
-            start_dir: f32,
-            end_dir: f32,
-            last_idx: usize,
-            unique: bool,
-            nullable: bool
-        }
-        let mut relations_to_draw: Vec<RelationToDraw> = Vec::new();
-        let mut relation_segments_to_draw: Vec<Rect> = Vec::new();
-
         let mut delta_used = Vec2::ZERO;
 
         let mut drag_stopped = false;
 
         for (rela_idx, relation) in self.relations.iter_mut().enumerate() {
-            let line_stroke = if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                Stroke::new(line_width, Color32::BLUE)
-            } else {
-                Stroke::new(line_width, Color32::from_gray(80))
-            };
-
-            // Obter os retângulos para ligar a relação
-            let (rect_a, rect_b) = ui.ctx().data(|data| {
-                (
-                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
-                    data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+            if self.selected.iter().filter(|s| {
+                matches!(s,
+                    Selected::Relation { relation, .. }
+                    if *relation == rela_idx
                 )
-            });
-
-            let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
-                continue;
-            };
-            let rect_a = scene_transform.mul_rect(rect_a);
-            let rect_b = scene_transform.mul_rect(rect_b);
-
-            // Cálculos base para as posições
-            let mut start = rect_a.center();
-            let start_offset = rect_a.width() / 2.0;
-
-            let mut end = rect_b.center();
-            let end_offset = rect_b.width() / 2.0;
-
-            let enough_space = (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
-            let auto_align = relation.relation_segments.is_empty();
-            let x_align = (start.x + end.x) / 2.0;
-
-            let start_goes_left = if auto_align {
-                if enough_space {start.x > end.x} else {false}
+            }).count() >= 1 {
+                Area::new(Id::new((rela_idx, "area")))
+                    .order(Order::Middle)
+                    .default_size(ui.clip_rect().size())
+                    .show(ui.ctx(), |ui| {
+                        draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation);
+                    });
             } else {
-                (if enough_space {start.x} else {x_align}) > *relation.relation_segments.first().unwrap() * scene_transform.scaling + scene_transform.translation.x
-            };
-            let start_dir = if start_goes_left { -1.0 } else { 1.0 };
-
-            let end_goes_left = if auto_align {
-                if enough_space {end.x > start.x} else {false}
-            } else {
-                (if enough_space {end.x} else {x_align}) > *relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x
-            };
-            let end_dir = if end_goes_left { -1.0 } else { 1.0 };
-
-            // Tipos existentes nas colunas [bool; 3] Multi, One, Zero
-            let start_column_relation_types_new_id = Id::new(("column_relation_types_new", start_goes_left, relation.tables[0], relation.columns[0]));
-            let end_column_relation_types_new_id = Id::new(("column_relation_types_new", end_goes_left, relation.tables[1], relation.columns[1]));
-            let (start_relation_types_new, end_relation_types_new, start_relation_types_old, end_relation_types_old) = ui.ctx().data(|data| {
-                (
-                    data.get_temp::<[bool; 3]>(start_column_relation_types_new_id),
-                    data.get_temp::<[bool; 3]>(end_column_relation_types_new_id),
-                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", start_goes_left, relation.tables[0], relation.columns[0]))),
-                    data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", end_goes_left, relation.tables[1], relation.columns[1])))
-                )
-            });
-
-            let (Some(mut start_relation_types_new), Some(mut end_relation_types_new)) = (start_relation_types_new, end_relation_types_new) else {
-                continue;
-            };
-
-            let start_relation_types_old = match start_relation_types_old {
-                None => [false, false, false],
-                Some(relation_types) => relation_types
-            };
-            let end_relation_types_old = match end_relation_types_old {
-                None => [false, false, false],
-                Some(relation_types) => relation_types
-            };
-
-            let adjust_start_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].unique {
-                start_relation_types_new[1] = true;
-                notation_size *
-                -start_dir *
-                if start_relation_types_old[0] && start_relation_types_old[2] {2.0}
-                else if start_relation_types_old[0] || start_relation_types_old[2] {1.0}
-                else {0.0}
-            } else {
-                start_relation_types_new[0] = true;
-                notation_size *
-                start_dir *
-                if start_relation_types_old[1] && start_relation_types_old[2] {2.0}
-                else if start_relation_types_old[1] || start_relation_types_old[2] {1.0}
-                else {0.0}
-            };
-            let adjust_end_y = if self.tables[relation.tables[0]].columns[relation.columns[0]].nullable {
-                end_relation_types_new[2] = true;
-                notation_size *
-                end_dir *
-                if end_relation_types_old[1] {1.0} else {-1.0} *
-                if end_relation_types_old[0] && end_relation_types_old[1] {0.0}
-                else if end_relation_types_old[0] || end_relation_types_old[1] {1.0}
-                else {0.0}
-            } else {
-                end_relation_types_new[1] = true;
-                notation_size *
-                -end_dir *
-                if end_relation_types_old[0] && end_relation_types_old[2] {2.0}
-                else if end_relation_types_old[0] || end_relation_types_old[2] {1.0}
-                else {0.0}
-            };
-
-            start.y += adjust_start_y;
-            end.y += adjust_end_y;
-
-            ui.ctx().data_mut(|data| {
-                data.insert_temp(start_column_relation_types_new_id, start_relation_types_new);
-                data.insert_temp(end_column_relation_types_new_id, end_relation_types_new);
-            });
-
-            let front_line = start_dir != end_dir && relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 3.0 * scene_transform.scaling;
-
-            // Criar pontos inicias para o caminho da relação
-            let mut pts = Vec::from([start]);
-
-            if !front_line {
-                if auto_align {
-                    pts.push(pos2(x_align, start.y));
-                    pts.push(pos2(x_align, end.y));
-                } else {
-                    pts.push(pos2(relation.relation_segments[0] * scene_transform.scaling + scene_transform.translation.x, start.y));
-                    for (i, seg) in relation.relation_segments.windows(2).enumerate() {
-                        pts.push(scene_transform.mul_pos(if i % 2 == 0 {
-                            pos2(seg[0], seg[1])
-                        } else {
-                            pos2(seg[1], seg[0])
-                        }));
-                    }
-                    pts.push(pos2(*relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x, end.y));
-                }
+                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation);
             }
-            pts.push(end);
-
-            // Ajustar posição da linha com base no limite dos retangulos das tabelas e desenhar as notações
-            let last_idx = pts.len() - 1;
-
-            // --- Primeira Tabela FK ---
-            pts[0].x += start_dir * start_offset;
-            if !front_line {
-                let new_start_x = if start_goes_left {
-                    pts[1].x.min(pts[0].x - table_proximity_limit)
-                } else {
-                    pts[1].x.max(pts[0].x + table_proximity_limit)
-                };
-                pts[1].x = new_start_x;
-                pts[2].x = new_start_x;
-            }
-
-            // --- Segunda Tabela PK --
-            pts[last_idx].x += end_dir * end_offset;
-            if !front_line {
-                let new_end_x = if end_goes_left {
-                    pts[last_idx - 1].x.min(pts[last_idx].x - table_proximity_limit)
-                } else {
-                    pts[last_idx - 1].x.max(pts[last_idx].x + table_proximity_limit)
-                };
-                pts[last_idx - 1].x = new_end_x;
-                pts[last_idx - 2].x = new_end_x;
-            }
-
-            if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                relations_to_draw.push(RelationToDraw {pts: pts.clone(), line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx,
-                    unique: self.tables[relation.tables[0]].columns[relation.columns[0]].unique,
-                    nullable: self.tables[relation.tables[0]].columns[relation.columns[0]].nullable});
-            } else {
-                draw_visual_relation(painter, &pts, false, line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx,
-                    self.tables[relation.tables[0]].columns[relation.columns[0]].unique,
-                    self.tables[relation.tables[0]].columns[relation.columns[0]].nullable);
-            }
-
-            let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click());
-            let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click());
-            if rel_first_response.clicked() || rel_second_response.clicked() {
-                if !ui.input(|i| {i.modifiers.command_only()}) || self.read_only {self.selected.clear();}
-                toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
-            }
-            let popup_first_id = ui.id().with(("popup", rela_idx, "first"));
-            let popup_second_id = ui.id().with(("popup", rela_idx, "second"));
-            if !self.read_only {
-                popup_relation_create(&rel_first_response, popup_first_id, relation, &mut self.selected);
-                popup_relation_create(&rel_second_response, popup_second_id, relation,  &mut self.selected);
-                
-                if !front_line && rel_first_response.secondary_clicked() {
-                    self.selected.clear();
-                    if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
-                    let mid = ((pts[0].x + pts[1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
-                    let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
-                    relation.relation_segments.insert(0, mid);
-                    relation.relation_segments.insert(1, next);
-                    Popup::open_id(ui.ctx(), popup_first_id);
-                }
-                if rel_second_response.secondary_clicked() {
-                    self.selected.clear();
-                    if front_line {
-                        relation.relation_segments.clear();
-                        let mid_x = (pts[0].x + pts[1].x)/2.0;
-                        let first = ((pts[0].x + mid_x)/2.0 - scene_transform.translation.x) / scene_transform.scaling;
-                        let second = (pts[0].y + 20.0 - scene_transform.translation.y) / scene_transform.scaling;
-                        let third = ((pts[1].x + mid_x)/2.0 - scene_transform.translation.x) / scene_transform.scaling;
-                        relation.relation_segments.push(first);
-                        relation.relation_segments.push(second);
-                        relation.relation_segments.push(third);
-                    } else {
-                        if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
-                        let mid = ((pts[last_idx].x + pts[last_idx - 1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
-                        let next = ((pts[last_idx - 1].y + pts[last_idx - 2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
-                        relation.relation_segments.push(next);
-                        relation.relation_segments.push(mid);
-                    }
-                    Popup::open_id(ui.ctx(), popup_second_id);
-                }
-            }
-
-            // Segmentos
-            for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
-                let (p1, p2) = (pair[0], pair[1]);
-                let is_vertical = seg_idx % 2 == 0;
-
-                let seg_id = ui.id().with(("seg", rela_idx, seg_idx));
-
-                // Area visual, largura da linha
-                let visual_rect = Rect::from_two_pos(p1, p2).expand(line_width / 2.0);
-
-                // Expandir a area para clicar
-                let hit_padding = if is_vertical { vec2(3.0, 0.0) } else { vec2(0.0, 3.0) };
-                let interact_rect = visual_rect.expand2(hit_padding);
-
-                let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
-                let popup_id = ui.id().with(("popup", rela_idx, seg_idx));
-
-                if seg_response.clicked() {
-                    if self.read_only {
-                        self.selected.clear();
-                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
-                    } else {
-                        if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
-                    }
-                }
-                
-                if !self.read_only {
-                    popup_relation_create(&seg_response, popup_id, relation, &mut self.selected);
-
-                    if seg_response.drag_started() {
-                        let item_seg = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
-                        let item_rela = Selected::Relation { relation: rela_idx, segment: None };
-                        if !self.selected.contains(&item_seg) && !self.selected.contains(&item_rela) {
-                            if !ui.input(|i| {i.modifiers.command_only()}) {self.selected.clear();}
-                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len(), self.read_only);
-                        } else {
-                            toggle_selected(&mut self.selected, item_seg, relation.relation_segments.len(),self.read_only);
-                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
-                        }
-                    }
-
-                    if self.selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) || self.selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
-                        relation_segments_to_draw.push(visual_rect);
-                    } else if seg_response.hovered() {
-                        painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::from_gray(160));
-                    }
-
-                    // --- Mudanças de estado (Start / End Drag / Right Click) ---
-                    if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
-                        let interact_real_center = scene_transform.inverse().mul_pos(interact_rect.center());
-                        if auto_align {
-                            relation.relation_segments.push(interact_real_center.x);
-                        }
-                        relation.relation_segments[seg_idx] = if is_vertical { interact_real_center.x } else { interact_real_center.y };
-
-                        Popup::open_id(ui.ctx(), popup_id);
-                    }
-
-                    // --- Arrastar ---
-                    if seg_response.dragged() {
-                        Popup::close_id(ui.ctx(), popup_id);
-                        let delta = seg_response.drag_delta() / scene_transform.scaling;
-                        delta_used = delta;
-                        ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-                    }
-
-                    // --- Dividir linha ---
-                    if seg_response.secondary_clicked() {
-                        self.selected.clear();
-                        let mut mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
-                        let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
-                        if let Some(mouse_pos) = ui.input(|i| {i.pointer.latest_pos()}) {
-                            mid = if is_vertical {mouse_pos.y - scene_transform.translation.y} else {mouse_pos.x - scene_transform.translation.x} / scene_transform.scaling;
-                        }
-                        relation.relation_segments.insert(seg_idx + 1, mid);
-                        relation.relation_segments.insert(seg_idx + 2, next);
-                    }
-
-                    let (start, end) = (scene_transform.inverse().mul_pos(pts[0]), scene_transform.inverse().mul_pos(pts[last_idx]));
-
-                    if seg_response.drag_stopped() {
-                        drag_stopped = true;
-                    }
-
-                    if seg_idx != 0 {
-                        let pt_id = ui.id().with(("pt", rela_idx, seg_idx));
-                        let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
-                        let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
-                        let pt_popup_id = ui.id().with(("popup_pt", rela_idx, seg_idx));
-
-                        popup_relation_create(&pt_response, pt_popup_id, relation,&mut self.selected);
-
-                        if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
-                            let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
-                            relation.relation_segments[seg_idx - 1] = if is_vertical { pt_real_center.y } else { pt_real_center.x };
-                            relation.relation_segments[seg_idx]     = if is_vertical { pt_real_center.x } else { pt_real_center.y };
-                            Popup::open_id(ui.ctx(), pt_popup_id);
-                        }
-
-                        if pt_response.hovered() {
-                            painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
-
-                            if pt_response.dragged() {
-                                let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
-                                let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
-
-                                relation.relation_segments[seg_idx - 1] += delta_prev / scene_transform.scaling;
-                                relation.relation_segments[seg_idx]     += delta_curr / scene_transform.scaling;
-
-                                ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-                            }
-                        }
-
-                        if pt_response.secondary_clicked() {
-                            self.selected.clear();
-                            relation.relation_segments.remove(seg_idx);
-                            relation.relation_segments.remove(seg_idx - 1);
-                            Popup::open_id(ui.ctx(), popup_second_id);
-                        }
-
-                        if pt_response.drag_stopped() {
-                            verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y, &mut self.selected, rela_idx);
-                            verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y, &mut self.selected, rela_idx);
-                        }
-                    }
-                }
-            }
-        }
-
-        for relation_to_draw in relations_to_draw.iter() {
-            draw_visual_relation(painter, &relation_to_draw.pts, true, relation_to_draw.line_stroke, relation_to_draw.table_proximity_limit, relation_to_draw.notation_size, relation_to_draw.start_dir, relation_to_draw.end_dir, relation_to_draw.last_idx, relation_to_draw.unique, relation_to_draw.nullable);
-        }
-        for segment_to_draw_rect in relation_segments_to_draw {
-            painter.rect_filled(segment_to_draw_rect, CornerRadius::ZERO, Color32::BLUE);
         }
 
         if delta_used != Vec2::ZERO {
@@ -1099,6 +979,371 @@ impl TemplateApp {
                     data.insert_temp(Id::new(("column_relation_types_old", false, table_idx, col_idx)),
                     data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_new", false, table_idx, col_idx))).unwrap());
                 })
+            }
+        }
+    }
+}
+
+fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation) {
+    let line_stroke = if selected.contains(&Selected::Relation { relation: rela_idx, segment: None }) {
+        Stroke::new(line_width, Color32::BLUE)
+    } else {
+        Stroke::new(line_width, Color32::from_gray(80))
+    };
+
+    // Obter os retângulos para ligar a relação
+    let (rect_a, rect_b) = ui.ctx().data(|data| {
+        (
+            data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+            data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+        )
+    });
+
+    let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+        return;
+    };
+    let rect_a = scene_transform.mul_rect(rect_a);
+    let rect_b = scene_transform.mul_rect(rect_b);
+
+    // Cálculos base para as posições
+    let mut start = rect_a.center();
+    let start_offset = rect_a.width() / 2.0;
+
+    let mut end = rect_b.center();
+    let end_offset = rect_b.width() / 2.0;
+
+    let enough_space = (start.x - end.x).abs() > start_offset + end_offset + table_proximity_limit * 2.0;
+    let auto_align = relation.relation_segments.is_empty();
+    let x_align = (start.x + end.x) / 2.0;
+
+    let start_goes_left = if auto_align {
+        if enough_space {start.x > end.x} else {false}
+    } else {
+        (if enough_space {start.x} else {x_align}) > *relation.relation_segments.first().unwrap() * scene_transform.scaling + scene_transform.translation.x
+    };
+    let start_dir = if start_goes_left { -1.0 } else { 1.0 };
+
+    let end_goes_left = if auto_align {
+        if enough_space {end.x > start.x} else {false}
+    } else {
+        (if enough_space {end.x} else {x_align}) > *relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x
+    };
+    let end_dir = if end_goes_left { -1.0 } else { 1.0 };
+
+    // Tipos existentes nas colunas [bool; 3] Multi, One, Zero
+    let start_column_relation_types_new_id = Id::new(("column_relation_types_new", start_goes_left, relation.tables[0], relation.columns[0]));
+    let end_column_relation_types_new_id = Id::new(("column_relation_types_new", end_goes_left, relation.tables[1], relation.columns[1]));
+    let (start_relation_types_new, end_relation_types_new, start_relation_types_old, end_relation_types_old) = ui.ctx().data(|data| {
+        (
+            data.get_temp::<[bool; 3]>(start_column_relation_types_new_id),
+            data.get_temp::<[bool; 3]>(end_column_relation_types_new_id),
+            data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", start_goes_left, relation.tables[0], relation.columns[0]))),
+            data.get_temp::<[bool; 3]>(Id::new(("column_relation_types_old", end_goes_left, relation.tables[1], relation.columns[1])))
+        )
+    });
+
+    let (Some(mut start_relation_types_new), Some(mut end_relation_types_new)) = (start_relation_types_new, end_relation_types_new) else {
+        return;
+    };
+
+    let start_relation_types_old = match start_relation_types_old {
+        None => [false, false, false],
+        Some(relation_types) => relation_types
+    };
+    let end_relation_types_old = match end_relation_types_old {
+        None => [false, false, false],
+        Some(relation_types) => relation_types
+    };
+
+    let adjust_start_y = if unique {
+        start_relation_types_new[1] = true;
+        notation_size *
+        -start_dir *
+        if start_relation_types_old[0] && start_relation_types_old[2] {2.0}
+        else if start_relation_types_old[0] || start_relation_types_old[2] {1.0}
+        else {0.0}
+    } else {
+        start_relation_types_new[0] = true;
+        notation_size *
+        start_dir *
+        if start_relation_types_old[1] && start_relation_types_old[2] {2.0}
+        else if start_relation_types_old[1] || start_relation_types_old[2] {1.0}
+        else {0.0}
+    };
+    let adjust_end_y = if nullable {
+        end_relation_types_new[2] = true;
+        notation_size *
+        end_dir *
+        if end_relation_types_old[1] {1.0} else {-1.0} *
+        if end_relation_types_old[0] && end_relation_types_old[1] {0.0}
+        else if end_relation_types_old[0] || end_relation_types_old[1] {1.0}
+        else {0.0}
+    } else {
+        end_relation_types_new[1] = true;
+        notation_size *
+        -end_dir *
+        if end_relation_types_old[0] && end_relation_types_old[2] {2.0}
+        else if end_relation_types_old[0] || end_relation_types_old[2] {1.0}
+        else {0.0}
+    };
+
+    start.y += adjust_start_y;
+    end.y += adjust_end_y;
+
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(start_column_relation_types_new_id, start_relation_types_new);
+        data.insert_temp(end_column_relation_types_new_id, end_relation_types_new);
+    });
+
+    let front_line = start_dir != end_dir && relation.relation_segments.len() <= 1 && (start.y - end.y).abs() < 3.0 * scene_transform.scaling;
+
+    // Criar pontos inicias para o caminho da relação
+    let mut pts = Vec::from([start]);
+
+    if !front_line {
+        if auto_align {
+            pts.push(pos2(x_align, start.y));
+            pts.push(pos2(x_align, end.y));
+        } else {
+            pts.push(pos2(relation.relation_segments[0] * scene_transform.scaling + scene_transform.translation.x, start.y));
+            for (i, seg) in relation.relation_segments.windows(2).enumerate() {
+                pts.push(scene_transform.mul_pos(if i % 2 == 0 {
+                    pos2(seg[0], seg[1])
+                } else {
+                    pos2(seg[1], seg[0])
+                }));
+            }
+            pts.push(pos2(*relation.relation_segments.last().unwrap() * scene_transform.scaling + scene_transform.translation.x, end.y));
+        }
+    }
+    pts.push(end);
+
+    // Ajustar posição da linha com base no limite dos retangulos das tabelas e desenhar as notações
+    let last_idx = pts.len() - 1;
+
+    // --- Primeira Tabela FK ---
+    pts[0].x += start_dir * start_offset;
+    if !front_line {
+        let new_start_x = if start_goes_left {
+            pts[1].x.min(pts[0].x - table_proximity_limit)
+        } else {
+            pts[1].x.max(pts[0].x + table_proximity_limit)
+        };
+        pts[1].x = new_start_x;
+        pts[2].x = new_start_x;
+    }
+
+    // --- Segunda Tabela PK --
+    pts[last_idx].x += end_dir * end_offset;
+    if !front_line {
+        let new_end_x = if end_goes_left {
+            pts[last_idx - 1].x.min(pts[last_idx].x - table_proximity_limit)
+        } else {
+            pts[last_idx - 1].x.max(pts[last_idx].x + table_proximity_limit)
+        };
+        pts[last_idx - 1].x = new_end_x;
+        pts[last_idx - 2].x = new_end_x;
+    }
+
+    draw_visual_relation(painter, &pts, selected.contains(&Selected::Relation { relation: rela_idx, segment: None }), line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx, unique, nullable);
+
+    let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click_and_drag());
+    let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click_and_drag());
+    if rel_first_response.clicked() || rel_second_response.clicked() {
+        if !ui.input(|i| {i.modifiers.command_only()}) || read_only {selected.clear();}
+        toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
+    }
+    let popup_first_id = Id::new(("popup", rela_idx, "first"));
+    let popup_second_id = Id::new(("popup", rela_idx, "second"));
+    if !read_only {
+        popup_relation_create(&rel_first_response, popup_first_id, relation, selected);
+        popup_relation_create(&rel_second_response, popup_second_id, relation, selected);
+        if rel_first_response.drag_started() || rel_second_response.drag_started() {
+            let item_rela = Selected::Relation { relation: rela_idx, segment: None };
+            if !selected.contains(&item_rela) {
+                if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                toggle_selected(selected, item_rela, relation.relation_segments.len(), read_only);
+            } else {
+                toggle_selected(selected, item_rela, relation.relation_segments.len(),read_only);
+                toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
+            }
+        }
+        if rel_first_response.hovered() || rel_second_response.hovered() {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+        }
+        if rel_first_response.dragged() || rel_second_response.dragged() {
+            Popup::close_all(ui.ctx());
+            let delta = (rel_first_response.drag_delta() / scene_transform.scaling) + (rel_second_response.drag_delta() / scene_transform.scaling);
+            *delta_used = delta;
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+        }
+        if rel_first_response.drag_stopped() {
+            Popup::open_id(ui.ctx(), popup_first_id);
+            *drag_stopped = true;
+        }
+        if rel_second_response.drag_stopped() {
+            Popup::open_id(ui.ctx(), popup_second_id);
+            *drag_stopped = true;
+        }
+        
+        if !front_line && rel_first_response.secondary_clicked() {
+            selected.clear();
+            if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
+            let mid = ((pts[0].x + pts[1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
+            let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
+            relation.relation_segments.insert(0, mid);
+            relation.relation_segments.insert(1, next);
+            Popup::open_id(ui.ctx(), popup_first_id);
+        }
+        if rel_second_response.secondary_clicked() {
+            selected.clear();
+            if front_line {
+                relation.relation_segments.clear();
+                let mid_x = (pts[0].x + pts[1].x)/2.0;
+                let first = ((pts[0].x + mid_x)/2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                let second = (pts[0].y + 20.0 - scene_transform.translation.y) / scene_transform.scaling;
+                let third = ((pts[1].x + mid_x)/2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                relation.relation_segments.push(first);
+                relation.relation_segments.push(second);
+                relation.relation_segments.push(third);
+            } else {
+                if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
+                let mid = ((pts[last_idx].x + pts[last_idx - 1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                let next = ((pts[last_idx - 1].y + pts[last_idx - 2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
+                relation.relation_segments.push(next);
+                relation.relation_segments.push(mid);
+            }
+            Popup::open_id(ui.ctx(), popup_second_id);
+        }
+    }
+
+    // Segmentos
+    for (seg_idx, pair) in pts[1..last_idx].windows(2).enumerate() {
+        let (p1, p2) = (pair[0], pair[1]);
+        let is_vertical = seg_idx % 2 == 0;
+
+        let seg_id = Id::new(("seg", rela_idx, seg_idx));
+
+        // Area visual, largura da linha
+        let visual_rect = Rect::from_two_pos(p1, p2).expand(line_width / 2.0);
+
+        // Expandir a area para clicar
+        let hit_padding = if is_vertical { vec2(3.0, 0.0) } else { vec2(0.0, 3.0) };
+        let interact_rect = visual_rect.expand2(hit_padding);
+
+        let seg_response = ui.interact(interact_rect, seg_id, Sense::click_and_drag());
+        let popup_id = Id::new(("popup", rela_idx, seg_idx));
+
+        if seg_response.clicked() {
+            if read_only {
+                selected.clear();
+                toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
+            } else {
+                if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), read_only);
+            }
+        }
+        
+        if !read_only {
+            popup_relation_create(&seg_response, popup_id, relation, selected);
+
+            if seg_response.drag_started() {
+                let item_seg = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
+                let item_rela = Selected::Relation { relation: rela_idx, segment: None };
+                if !selected.contains(&item_seg) && !selected.contains(&item_rela) {
+                    if !ui.input(|i| {i.modifiers.command_only()}) {selected.clear();}
+                    toggle_selected(selected, item_seg, relation.relation_segments.len(), read_only);
+                } else {
+                    toggle_selected(selected, item_seg, relation.relation_segments.len(),read_only);
+                    toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), read_only);
+                }
+            }
+
+            if selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) {
+                painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
+            }
+            if seg_response.hovered() {
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+            }
+
+            // --- Mudanças de estado (Start / End Drag / Right Click) ---
+            if seg_response.drag_started() || seg_response.secondary_clicked() || seg_response.drag_stopped() {
+                let interact_real_center = scene_transform.inverse().mul_pos(interact_rect.center());
+                if auto_align {
+                    relation.relation_segments.push(interact_real_center.x);
+                }
+                relation.relation_segments[seg_idx] = if is_vertical { interact_real_center.x } else { interact_real_center.y };
+
+                Popup::open_id(ui.ctx(), popup_id);
+            }
+
+            // --- Arrastar ---
+            if seg_response.dragged() {
+                Popup::close_all(ui.ctx());
+                let delta = seg_response.drag_delta() / scene_transform.scaling;
+                *delta_used = delta;
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+            }
+
+            // --- Dividir linha ---
+            if seg_response.secondary_clicked() {
+                selected.clear();
+                let mut mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
+                let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
+                if let Some(mouse_pos) = ui.input(|i| {i.pointer.latest_pos()}) {
+                    mid = if is_vertical {mouse_pos.y - scene_transform.translation.y} else {mouse_pos.x - scene_transform.translation.x} / scene_transform.scaling;
+                }
+                relation.relation_segments.insert(seg_idx + 1, mid);
+                relation.relation_segments.insert(seg_idx + 2, next);
+            }
+
+            let (start, end) = (scene_transform.inverse().mul_pos(pts[0]), scene_transform.inverse().mul_pos(pts[last_idx]));
+
+            if seg_response.drag_stopped() {
+                *drag_stopped = true;
+            }
+
+            if seg_idx != 0 {
+                let pt_id = Id::new(("pt", rela_idx, seg_idx));
+                let pt_rect = Rect::from_center_size(p1, vec2(interact_hitbox_size, interact_hitbox_size));
+                let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
+                let pt_popup_id = Id::new(("popup_pt", rela_idx, seg_idx));
+
+                popup_relation_create(&pt_response, pt_popup_id, relation, selected);
+
+                if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
+                    let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
+                    relation.relation_segments[seg_idx - 1] = if is_vertical { pt_real_center.y } else { pt_real_center.x };
+                    relation.relation_segments[seg_idx]     = if is_vertical { pt_real_center.x } else { pt_real_center.y };
+                    Popup::open_id(ui.ctx(), pt_popup_id);
+                }
+
+                if pt_response.hovered() {
+                    painter.circle_filled(p1, 4.5 * scene_transform.scaling, Color32::from_gray(130));
+                    ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+
+                    if pt_response.dragged() {
+                        let delta_prev = if is_vertical { pt_response.drag_delta().y } else { pt_response.drag_delta().x };
+                        let delta_curr = if is_vertical { pt_response.drag_delta().x } else { pt_response.drag_delta().y };
+
+                        relation.relation_segments[seg_idx - 1] += delta_prev / scene_transform.scaling;
+                        relation.relation_segments[seg_idx]     += delta_curr / scene_transform.scaling;
+
+                        ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+                    }
+                }
+
+                if pt_response.secondary_clicked() {
+                    selected.clear();
+                    relation.relation_segments.remove(seg_idx);
+                    relation.relation_segments.remove(seg_idx - 1);
+                    Popup::open_id(ui.ctx(), popup_second_id);
+                }
+
+                if pt_response.drag_stopped() {
+                    verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y, selected, rela_idx);
+                    verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y, selected, rela_idx);
+                }
             }
         }
     }
@@ -1340,53 +1585,9 @@ impl eframe::App for TemplateApp {
                     *flag = false;
                     self.exporting = true;
 
-                    ui.ctx().data_mut(|d| d.insert_temp(Id::new("saved_transform"), scene_transform));
+                    ui.ctx().data_mut(|d| d.insert_temp(Id::new("saved_transform"), self.scene_transform));
 
-                    let mut min_x = f32::MAX;
-                    let mut min_y = f32::MAX;
-                    let mut max_x = f32::MIN;
-                    let mut max_y = f32::MIN;
-
-                    if self.tables.is_empty() {
-                        min_x = 0.0; min_y = 0.0; max_x = 800.0; max_y = 600.0;
-                    } else {
-                        for table in &self.tables {
-                            // Como table.pos é o CENTRO da tabela, tem de se calcular as margens
-                            let estimated_height = 8.0 + 32.0 /*HEADER_SIZE*/ + (table.columns.len() as f32 * 26.0 /*COL_SIZE*/);
-                            let estimated_width = 350.0; // Largura média para os cálculos
-
-                            let padding = 40.0; // margem de segurança
-
-                            // Descobrir as pontas verdadeiras do retângulo
-                            let left = table.pos.x - (estimated_width / 2.0) - padding;
-                            let right = table.pos.x + (estimated_width / 2.0) + padding;
-                            let top = table.pos.y - (estimated_height / 2.0) - padding;
-                            let bottom = table.pos.y + (estimated_height / 2.0) + padding;
-
-                            // Atualizar a Caixa global
-                            min_x = min_x.min(left);
-                            min_y = min_y.min(top);
-                            max_x = max_x.max(right);
-                            max_y = max_y.max(bottom);
-                        }
-                    }
-
-                    let diagram_width = (max_x - min_x).max(1.0);
-                    let diagram_height = (max_y - min_y).max(1.0);
-                    let screen_rect = ui.max_rect();
-
-                    // Escala (mantendo uma margem de 95% do ecrã)
-                    let scale_x = (screen_rect.width() * 0.95) / diagram_width;
-                    let scale_y = (screen_rect.height() * 0.95) / diagram_height;
-                    scene_transform.scaling = scale_x.min(scale_y);
-
-                    // Centra
-                    let center_x = (min_x + max_x) / 2.0;
-                    let center_y = (min_y + max_y) / 2.0;
-                    scene_transform.translation = vec2(
-                        screen_rect.center().x - center_x * scene_transform.scaling,
-                        screen_rect.center().y - center_y * scene_transform.scaling,
-                    );
+                    center_screen(ctx, ui.clip_rect(), &mut self.scene_transform, &self.tables, &self.relations, true);
 
                     // Faz screenshot
                     ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
@@ -1405,7 +1606,7 @@ impl eframe::App for TemplateApp {
                         self.exporting = false;
 
                         if let Some(saved) = ui.ctx().data_mut(|d| d.get_temp::<TSTransform>(Id::new("saved_transform"))) {
-                            scene_transform = saved;
+                            self.scene_transform = saved;
                         }
 
                         let pixels_rgba: Vec<u8> = image.pixels.iter().flat_map(|color| color.to_array()).collect();
@@ -1421,213 +1622,131 @@ impl eframe::App for TemplateApp {
                     self.selected.clear();
                 }
 
-                // Colocar o background a controlar a Scene (PanAndDrag)
-                Scene::new()
-                    .drag_pan_buttons(DragPanButtons::all().difference(DragPanButtons::PRIMARY))
-                    .zoom_range(Rangef::new(0.1, 2.0))
-                    .register_pan_and_zoom(ui, &mut bg_response, &mut scene_transform);
+                // Drag and Drop area para selecionar objetos
+                if !self.read_only {
+                    let start_drag_id = Id::new("start_background_drag_pos");
+                    if bg_response.drag_started_by(PointerButton::Primary) {
+                        ctx.data_mut(|data| {
+                            data.insert_temp(start_drag_id, bg_response.interact_pointer_pos().unwrap());
+                        });
+                    }
 
-                Window::new("Details")
-                    .order(Order::Tooltip)
-                    .default_size(vec2(320.0, 350.0))
-                    .min_height(150.0)
-                    .show(ctx, |ui| {
-                        if let Some(selected) = self.selected.last() {
-                            match selected {
-                                Selected::Table { table, column } => {
-                                    match column {
-                                        None => {
-                                            let t = &mut self.tables[*table];
+                    if let Some(start_drag_pos) = ctx.data(|data| {
+                        data.get_temp::<Pos2>(start_drag_id)
+                    }) {
+                        if let Some(end_drag_pos) = bg_response.interact_pointer_pos() {
+                            let selection_area_rect = Rect::from_two_pos(start_drag_pos, end_drag_pos);
+                            self.selected.clear();
 
-                                            // --- Table grid ---
-                                            Grid::new("table_grid")
-                                                .num_columns(2)
-                                                .spacing([40.0, 8.0])
-                                                .show(ui, |ui| {
-                                                    ui.label(RichText::new("Type").strong().size(16.5));
-                                                    ui.label(RichText::new("Table").size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Name").strong().size(16.5));
-                                                    ui.label(RichText::new(&t.name).size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Columns").strong().size(16.5));
-                                                    ui.label(RichText::new(t.columns.len().to_string()).size(16.5));
-                                                    ui.end_row();
-                                                });
-
-                                            ui.add_space(10.0);
-                                            ui.separator();
-                                            ui.add_space(5.0);
-
-                                            // --- Description ---
-                                            ui.label(RichText::new("Description:").size(19.0));
-                                            ui.add_enabled_ui(!self.read_only, |ui| {
-                                                ui.add_sized(
-                                                    ui.available_size(),
-                                                    TextEdit::multiline(&mut t.description)
-                                                        .font(FontId::proportional(19.0))
-                                                );
-                                            });
-                                        },
-                                        Some(column_idx) => {
-                                            // Save table name by clonning
-                                            let table_name = self.tables[*table].name.clone();
-
-                                            // Get the column without memory conflicts
-                                            let c = &mut self.tables[*table].columns[*column_idx];
-
-                                            // --- Column grid ---
-                                            Grid::new("column_grid")
-                                                .num_columns(2)
-                                                .spacing([40.0, 8.0])
-                                                .show(ui, |ui| {
-                                                    ui.label(RichText::new("Type").strong().size(16.5));
-                                                    ui.label(RichText::new("Column").size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Table").strong().size(16.5));
-                                                    ui.label(RichText::new(table_name).size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Name").strong().size(16.5));
-                                                    ui.label(RichText::new(&c.name).size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Data Type").strong().size(16.5));
-                                                    ui.label(RichText::new(&c.column_type).monospace().size(16.5).color(Color32::from_gray(120)));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Key").strong().size(16.5));
-                                                    let (key_text, key_color) = match c.key_type.as_str() {
-                                                        "PK" => ("Primary Key", Color32::from_rgb(255, 170, 0)),
-                                                        "FK" => ("Foreign Key", Color32::from_rgb(100, 150, 255)),
-                                                        _ => ("No key", Color32::from_gray(130)),
-                                                    };
-                                                    ui.label(RichText::new(key_text).color(key_color).size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Nullable").strong().size(16.5));
-                                                    let (null_text, null_color) = if c.nullable {
-                                                        ("Yes", Color32::from_rgb(100, 160, 100))
-                                                    } else {
-                                                        ("No", Color32::from_rgb(180, 85, 85))
-                                                    };
-                                                    ui.label(RichText::new(null_text).color(null_color).size(16.5));
-                                                    ui.end_row();
-
-                                                    ui.label(RichText::new("Unique").strong().size(16.5));
-                                                    let (null_text, null_color) = if c.unique {
-                                                        ("Yes", Color32::from_rgb(100, 160, 100))
-                                                    } else {
-                                                        ("No", Color32::from_rgb(180, 85, 85))
-                                                    };
-                                                    ui.label(RichText::new(null_text).color(null_color).size(16.5));
-                                                    ui.end_row();
-
-                                                });
-
-                                            ui.add_space(10.0);
-                                            ui.separator();
-                                            ui.add_space(5.0);
-
-                                            // --- Description ---
-                                            ui.label(RichText::new("Description:").size(19.0));
-                                            ui.add_enabled_ui(!self.read_only, |ui| {
-                                                ui.add_sized(
-                                                    ui.available_size(),
-                                                    TextEdit::multiline(&mut c.description)
-                                                        .font(FontId::proportional(19.0))
-                                                );
-                                            });
-                                        }
-                                    }
-                                },
-                                Selected::Relation { relation, .. } => {
-                                    let r = &mut self.relations[*relation];
-
-                                    // --- Relation grid ---
-                                    Grid::new("relation_grid")
-                                        .num_columns(2)
-                                        .spacing([40.0, 8.0])
-                                        .show(ui, |ui| {
-                                            ui.label(RichText::new("Type").strong().size(16.5));
-                                            ui.label(RichText::new("Relation").size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Name").strong().size(16.5));
-                                            ui.label(RichText::new(&r.name).size(16.5));
-                                            ui.end_row();
-                                        });
-
-                                    ui.add_space(10.0);
-                                    ui.separator();
-                                    ui.add_space(5.0);
-
-                                    // --- Description ---
-                                    ui.label(RichText::new("Description:").size(19.0));
-                                    ui.add_enabled_ui(!self.read_only, |ui| {
-                                        ui.add_sized(
-                                            ui.available_size(),
-                                            TextEdit::multiline(&mut r.description)
-                                                .font(FontId::proportional(19.0))
-                                        );
-                                    });
+                            // Adicionar todas as tabelas dentro da area aos selecionados
+                            for (table_idx, table) in self.tables.iter().enumerate() {
+                                if selection_area_rect.contains(self.scene_transform.mul_pos(table.pos)) {
+                                    toggle_selected(&mut self.selected, Selected::Table { table: table_idx, column: None }, 0, self.read_only);
                                 }
                             }
-                        } else {
-                            // --- Empty state ---
-                            ui.label(
-                                RichText::new("No object selected.")
-                                    .size(20.0)
-                                    .strong()
-                            );
 
-                            ui.allocate_space(ui.available_size());
-                        }
-                    });
-
-                // Controlar zoom com uma barra superior horizontal
-                Area::new(Id::new("DragValue_zoom"))
-                    .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
-                    .order(Order::Foreground)
-                    .show(ctx, |ui| {
-                        Frame::default()
-                            .fill(Color32::WHITE)
-                            .stroke(Stroke::new(1.0, Color32::BLACK))
-                            .corner_radius(5.0)
-                            .inner_margin(8.0)
-                            .show(ui, |ui| {
-
-                                ui.visuals_mut().override_text_color = Some(Color32::BLACK);
-
-                                let center_vec = bg_response.rect.center().to_vec2();
-                                let old_scale = scene_transform.scaling;
-                                let mut new_scale = old_scale;
-
-                                ui.horizontal(|ui| {
-                                    if ui.button(" - ").clicked() {
-                                        new_scale = (new_scale - 0.1).max(0.1);
-                                    }
-
-                                    ui.add(Slider::new(&mut new_scale, 0.1 ..= 2.0)
-                                        .show_value(true)
-                                        .step_by(0.01));
-
-                                    if ui.button(" + ").clicked() {
-                                        new_scale = (new_scale + 0.1).min(5.0);
-                                    }
+                            // Adicionar todas as relações dentro da area aos selecionados
+                            for (rela_idx, relation) in self.relations.iter().enumerate() {
+                                let (rect_a, rect_b) = ctx.data(|data| {
+                                    (
+                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                                    )
                                 });
 
-                                if old_scale != new_scale {
-                                    scene_transform.scaling = new_scale;
-                                    let world_vec = (center_vec - scene_transform.translation) / old_scale;
-                                    scene_transform.translation += world_vec * (old_scale - scene_transform.scaling);
-                                }
-                            });
-                    });
+                                let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                                    continue;
+                                };
 
+                                let start_relation_pos = rect_a.center();
+                                let end_relation_pos = rect_b.center();
+
+                                if relation.relation_segments.is_empty() {
+                                    if selection_area_rect.contains(self.scene_transform.mul_pos(start_relation_pos.lerp(end_relation_pos, 0.5))) {
+                                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
+                                    }
+                                } else {
+                                    for (seg_idx, segment) in relation.relation_segments.iter().enumerate() {
+                                        let segment_pos = if seg_idx % 2 == 0 {
+                                            let mid_y = (if seg_idx == 0 {start_relation_pos.y} else {relation.relation_segments[seg_idx-1]} +
+                                                if seg_idx == relation.relation_segments.len()-1 {end_relation_pos.y} else {relation.relation_segments[seg_idx+1]}) / 2.0;
+                                            pos2(*segment, mid_y)
+                                        } else {
+                                            pos2((relation.relation_segments[seg_idx-1] + relation.relation_segments[seg_idx+1]) / 2.0, *segment)
+                                        };
+                                        if selection_area_rect.contains(self.scene_transform.mul_pos(segment_pos)) {
+                                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Desenhar uma area de seleção
+                            painter.rect(selection_area_rect, CornerRadius::ZERO, Color32::from_rgb(160, 160, 255), Stroke::new(3.0, Color32::BLUE), StrokeKind::Middle);
+                        }
+                    }
+
+                    if bg_response.drag_stopped_by(PointerButton::Primary) {
+                        ctx.data_mut(|data| {
+                            data.remove_temp::<Pos2>(start_drag_id);
+                        });
+                    }
+                }
+
+                // Mover o selecionado entre tabelas/colunas
+                if self.selected.len() == 1 {
+                    match &mut self.selected[0] {
+                        Selected::Relation { .. } => {}
+                        Selected::Table { table, column } => {
+                            if ctx.input(|i| {i.key_pressed(Key::ArrowRight)}) {
+                                *table = (*table + 1) % self.tables.len();
+                                *column = None;
+                            }
+                            if ctx.input(|i| {i.key_pressed(Key::ArrowLeft)}) {
+                                *table = (*table + self.tables.len() - 1) % self.tables.len();
+                                *column = None;
+                            }
+                            match column {
+                                Some(col_idx) => {
+                                    if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
+                                        if *col_idx != self.tables[*table].columns.len()-1 {
+                                            *col_idx += 1;
+                                        } else {
+                                            *column = None;
+                                        }
+                                    } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
+                                        if *col_idx != 0 {
+                                            *col_idx -= 1;
+                                        } else {
+                                            *column = None;
+                                        }
+                                    }
+                                }
+                                None => {
+                                    if self.tables[*table].columns.len() != 0 {
+                                        if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
+                                            *column = Some(0);
+                                        } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
+                                            *column = Some(self.tables[*table].columns.len()-1);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Colocar o background a controlar a Scene (PanAndDrag)
+                Scene::new()
+                    .drag_pan_buttons(if self.read_only {DragPanButtons::all()} else {DragPanButtons::all().difference(DragPanButtons::PRIMARY)})
+                    .zoom_range(Rangef::new(0.1, 2.0))
+                    .register_pan_and_zoom(ui, &mut bg_response, &mut self.scene_transform);
+
+                // Criar window de edição no ecra
+                self.draw_edit_window(ctx);
+
+                // Controlar zoom com uma barra superior horizontal
+                self.draw_zoom_area(ctx, ui, bg_response);
             }
 
             let mut delta_used = Vec2::ZERO;
@@ -1635,17 +1754,17 @@ impl eframe::App for TemplateApp {
             let mut new_transform: Option<TSTransform> = None;
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
-                let old_transform = scene_transform;
-                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut scene_transform, self.read_only, &mut self.selected);
+                let old_transform = self.scene_transform;
+                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected);
                 if delta_received != Vec2::ZERO {
                     delta_used = delta_received;
                 }
                 if drag_stopped_on_received != None {
                     drag_stopped_on = drag_stopped_on_received;
                 }
-                if old_transform != scene_transform {
-                    new_transform = Some(scene_transform);
-                    scene_transform = old_transform;
+                if old_transform != self.scene_transform {
+                    new_transform = Some(self.scene_transform);
+                    self.scene_transform = old_transform;
                 }
             }
 
@@ -1654,19 +1773,15 @@ impl eframe::App for TemplateApp {
             }
 
             // Desenhar as linhas das relações
-            self.draw_relations(ui, &painter, scene_transform);
+            self.draw_relations(ui, &painter, self.scene_transform);
 
             if delta_used != Vec2::ZERO {
                 move_all_selected(delta_used, &mut self.selected, &mut self.relations, &mut self.tables);
             }
 
             if let Some(new_transform) = new_transform {
-                scene_transform = new_transform;
+                self.scene_transform = new_transform;
             }
-
-            ui.ctx().data_mut(|d| {
-                d.insert_temp(Id::new("scene_transform"), scene_transform);
-            })
         });
     }
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -1680,6 +1795,54 @@ impl eframe::App for TemplateApp {
     /// Guarda o estado da app antes de ser terminada
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+}
+
+fn center_screen(ctx: &Context, screen_rect: Rect, scene_transform: &mut TSTransform, tables: &Vec<Table>, relations: &Vec<Relation>, is_print: bool) {
+    if tables.is_empty() {
+        *scene_transform = TSTransform::IDENTITY;
+    } else {
+        let mut diagram = Rect::NOTHING;
+
+        for (table_idx, table) in tables.iter().enumerate() {
+            // Como table.pos é o CENTRO da tabela, tem de se calcular as margens
+            let table_height = 8.0 + HEADER_SIZE + (table.columns.len() as f32 * COL_SIZE);
+            let table_width = if let Some(column_rect) = ctx.data(|data| {
+                data.get_temp::<Rect>(Id::new(("column_rect", table_idx, 0)))
+            }) {
+                column_rect.width() //largura real encontrada
+            } else {
+                300.0 // Fallback largura média para os cálculos
+            };
+
+            // Descobrir as pontas verdadeiras do retângulo
+            let left = table.pos.x - (table_width / 2.0);
+            let top = table.pos.y - (table_height / 2.0);
+            let right = table.pos.x + (table_width / 2.0);
+            let bottom = table.pos.y + (table_height / 2.0);
+
+            // Atualizar a Caixa global
+            diagram.extend_with(pos2(left, top));
+            diagram.extend_with(pos2(right, bottom));
+        }
+
+        for relation in relations.iter() {
+            for (seg_idx, seg_pos) in relation.relation_segments.iter().enumerate() {
+                if seg_idx % 2 == 0 {
+                    diagram.extend_with_x(*seg_pos);
+                } else {
+                    diagram.extend_with_y(*seg_pos);
+                }
+            }
+        }
+
+        // Escala (mantendo uma margem de 90% do ecrã)
+        let scale_x = (screen_rect.width() * 0.9) / diagram.width();
+        let scale_y = (screen_rect.height() * 0.9) / diagram.height();
+        scene_transform.scaling = if is_print {scale_x.min(scale_y)} else {scale_x.min(scale_y).min(1.0)};
+
+        // Centra
+        scene_transform.translation = screen_rect.center().to_vec2() - (diagram.center().to_vec2() * scene_transform.scaling);
     }
 }
 
