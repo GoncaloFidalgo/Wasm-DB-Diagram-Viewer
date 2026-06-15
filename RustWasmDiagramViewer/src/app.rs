@@ -701,7 +701,7 @@ impl TemplateApp {
         }
     }
 
-    fn draw_zoom_area(&mut self, ctx: &Context, bg_response: Response) {
+    fn draw_zoom_area(&mut self, ctx: &Context, ui: &Ui, bg_response: Response) {
         Area::new(Id::new("DragValue_zoom"))
             .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
             .order(Order::Foreground)
@@ -737,6 +737,26 @@ impl TemplateApp {
                             self.scene_transform.scaling = new_scale;
                             let world_vec = (center_vec - self.scene_transform.translation) / old_scale;
                             self.scene_transform.translation += world_vec * (old_scale - self.scene_transform.scaling);
+                        }
+                    });
+            });
+        
+        let screen_rect = ui.clip_rect();
+        Area::new(Id::new("CenterScreen_button"))
+            .anchor(Align2::CENTER_TOP, vec2(-130.0, 20.0))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                Frame::default()
+                    .fill(Color32::WHITE)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .corner_radius(5.0)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+
+                        ui.visuals_mut().override_text_color = Some(Color32::BLACK);
+
+                        if ui.button("◎").clicked() {
+                            center_screen(ctx, screen_rect, &mut self.scene_transform, &self.tables, &self.relations, false);
                         }
                     });
             });
@@ -1458,51 +1478,7 @@ impl eframe::App for TemplateApp {
 
                     ui.ctx().data_mut(|d| d.insert_temp(Id::new("saved_transform"), self.scene_transform));
 
-                    let mut min_x = f32::MAX;
-                    let mut min_y = f32::MAX;
-                    let mut max_x = f32::MIN;
-                    let mut max_y = f32::MIN;
-
-                    if self.tables.is_empty() {
-                        min_x = 0.0; min_y = 0.0; max_x = 800.0; max_y = 600.0;
-                    } else {
-                        for table in &self.tables {
-                            // Como table.pos é o CENTRO da tabela, tem de se calcular as margens
-                            let estimated_height = 8.0 + 32.0 /*HEADER_SIZE*/ + (table.columns.len() as f32 * 26.0 /*COL_SIZE*/);
-                            let estimated_width = 350.0; // Largura média para os cálculos
-
-                            let padding = 40.0; // margem de segurança
-
-                            // Descobrir as pontas verdadeiras do retângulo
-                            let left = table.pos.x - (estimated_width / 2.0) - padding;
-                            let right = table.pos.x + (estimated_width / 2.0) + padding;
-                            let top = table.pos.y - (estimated_height / 2.0) - padding;
-                            let bottom = table.pos.y + (estimated_height / 2.0) + padding;
-
-                            // Atualizar a Caixa global
-                            min_x = min_x.min(left);
-                            min_y = min_y.min(top);
-                            max_x = max_x.max(right);
-                            max_y = max_y.max(bottom);
-                        }
-                    }
-
-                    let diagram_width = (max_x - min_x).max(1.0);
-                    let diagram_height = (max_y - min_y).max(1.0);
-                    let screen_rect = ui.max_rect();
-
-                    // Escala (mantendo uma margem de 95% do ecrã)
-                    let scale_x = (screen_rect.width() * 0.95) / diagram_width;
-                    let scale_y = (screen_rect.height() * 0.95) / diagram_height;
-                    self.scene_transform.scaling = scale_x.min(scale_y);
-
-                    // Centra
-                    let center_x = (min_x + max_x) / 2.0;
-                    let center_y = (min_y + max_y) / 2.0;
-                    self.scene_transform.translation = vec2(
-                        screen_rect.center().x - center_x * self.scene_transform.scaling,
-                        screen_rect.center().y - center_y * self.scene_transform.scaling,
-                    );
+                    center_screen(ctx, ui.clip_rect(), &mut self.scene_transform, &self.tables, &self.relations, true);
 
                     // Faz screenshot
                     ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
@@ -1535,6 +1511,7 @@ impl eframe::App for TemplateApp {
                     self.selected.clear();
                 }
 
+                // Mover o selecionado entre tabelas/colunas
                 if self.selected.len() == 1 {
                     match &mut self.selected[0] {
                         Selected::Relation { .. } => {}
@@ -1587,7 +1564,7 @@ impl eframe::App for TemplateApp {
                 self.draw_edit_window(ctx);
 
                 // Controlar zoom com uma barra superior horizontal
-                self.draw_zoom_area(ctx, bg_response);
+                self.draw_zoom_area(ctx, ui, bg_response);
             }
 
             let mut delta_used = Vec2::ZERO;
@@ -1629,6 +1606,54 @@ impl eframe::App for TemplateApp {
     /// Guarda o estado da app antes de ser terminada
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+}
+
+fn center_screen(ctx: &Context, screen_rect: Rect, scene_transform: &mut TSTransform, tables: &Vec<Table>, relations: &Vec<Relation>, is_print: bool) {
+    if tables.is_empty() {
+        *scene_transform = TSTransform::IDENTITY;
+    } else {
+        let mut diagram = Rect::NOTHING;
+
+        for (table_idx, table) in tables.iter().enumerate() {
+            // Como table.pos é o CENTRO da tabela, tem de se calcular as margens
+            let table_height = 8.0 + HEADER_SIZE + (table.columns.len() as f32 * COL_SIZE);
+            let table_width = if let Some(column_rect) = ctx.data(|data| {
+                data.get_temp::<Rect>(Id::new(("column_rect", table_idx, 0)))
+            }) {
+                column_rect.width() //largura real encontrada
+            } else {
+                300.0 // Fallback largura média para os cálculos
+            };
+
+            // Descobrir as pontas verdadeiras do retângulo
+            let left = table.pos.x - (table_width / 2.0);
+            let top = table.pos.y - (table_height / 2.0);
+            let right = table.pos.x + (table_width / 2.0);
+            let bottom = table.pos.y + (table_height / 2.0);
+
+            // Atualizar a Caixa global
+            diagram.extend_with(pos2(left, top));
+            diagram.extend_with(pos2(right, bottom));
+        }
+
+        for relation in relations.iter() {
+            for (seg_idx, seg_pos) in relation.relation_segments.iter().enumerate() {
+                if seg_idx % 2 == 0 {
+                    diagram.extend_with_x(*seg_pos);
+                } else {
+                    diagram.extend_with_y(*seg_pos);
+                }
+            }
+        }
+
+        // Escala (mantendo uma margem de 90% do ecrã)
+        let scale_x = (screen_rect.width() * 0.9) / diagram.width();
+        let scale_y = (screen_rect.height() * 0.9) / diagram.height();
+        scene_transform.scaling = if is_print {scale_x.min(scale_y)} else {scale_x.min(scale_y).min(1.0)};
+
+        // Centra
+        scene_transform.translation = screen_rect.center().to_vec2() - (diagram.center().to_vec2() * scene_transform.scaling);
     }
 }
 
