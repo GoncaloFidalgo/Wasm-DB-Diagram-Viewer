@@ -167,12 +167,33 @@
             e.returnValue = true;
         }
     });
-    window.addEventListener('trigger-rust-save', () => {
-        //console.time("LivewireSave");
+
+if (!window.diagramListenersBound) {
+        window.addEventListener('trigger-rust-save', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_save();
         }
     });
+
+    window.addEventListener('trigger-export-png', () => {
+        if (window.wasmHandle) {
+            window.wasmHandle.trigger_export();
+        }
+    });
+
+    window.addEventListener('trigger-export-txt', (event) => {
+    if (event.detail && event.detail.name) {
+            window.diagramExportName = event.detail.name;
+        }
+            if (window.wasmHandle) {
+                window.wasmHandle.trigger_txt_export();
+            }
+    });
+
+    window.diagramListenersBound = true;
+}
+
+
     window.saveDiagramState = function (jsonString) {
         //console.timeEnd("LivewireSave");
         Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
@@ -286,20 +307,9 @@
             document.body.removeChild(link);
         }
     };
-    document.addEventListener('livewire:initialized', () => {
-        Livewire.on('trigger-export-png', () => {
-            if (window.wasmHandle) {
-                window.wasmHandle.trigger_export();
-            }
-        });
-        Livewire.on('trigger-export-txt', (data) => {
-            window.diagramExportName = data.name;
 
-            if (window.wasmHandle) {
-                window.wasmHandle.trigger_txt_export();
-            }
-        });
-    });
+
+
     window.diagramExportName = 'diagrama';
     window.downloadTextFile = function(content) {
         const blob = new Blob([content], { type: 'text/plain' });

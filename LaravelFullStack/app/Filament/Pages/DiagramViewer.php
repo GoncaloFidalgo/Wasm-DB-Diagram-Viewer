@@ -234,12 +234,18 @@ class DiagramViewer extends Page
                                         Action::make('export_png')
                                             ->label('Exportar como PNG')
                                             ->icon('heroicon-m-photo')
-                                            ->action(fn() => $this->dispatch('trigger-export-png')),
+                                            ->url('#')
+                                            ->extraAttributes([
+                                                'x-on:click.prevent' => '$dispatch(\'trigger-export-png\')',
+                                            ]),
 
                                         Action::make('export_txt')
                                             ->label('Exportar como TXT')
                                             ->icon('heroicon-m-document-text')
-                                            ->action(fn() => $this->dispatch('trigger-export-txt', name: $this->diagramName)),
+                                            ->url('#')
+                                            ->extraAttributes([
+                                                'x-on:click.prevent' => "\$dispatch('trigger-export-txt', { name: '" . addslashes($this->diagramName) . "' })",
+                                            ]),
                                     ])
                                         ->label('Exportar')
                                         ->icon('heroicon-m-arrow-down-tray')

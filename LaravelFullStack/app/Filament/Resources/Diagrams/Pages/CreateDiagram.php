@@ -154,7 +154,7 @@ BLADE
                 'version' => 0,
             ]);
 
-            return $this->redirect('/diagram/' . $diagramId, navigate: true);
+            return $this->redirect('/diagram/' . $diagramId);
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
 
