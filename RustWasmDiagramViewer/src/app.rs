@@ -991,8 +991,9 @@ impl TemplateApp {
             report.push_str(&format!("\nTabela: {}\n", table.name));
 
             let t_desc = if table.description.is_empty() { "" } else { &table.description };
+
             if !t_desc.is_empty() {
-                report.push_str(&format!("Descrição: {}\n", t_desc));
+                report.push_str(&format!("* {}\n", t_desc));
             }
 
             report.push_str("Colunas:\n");
@@ -1012,7 +1013,7 @@ impl TemplateApp {
 
                 // {:<name_w$} aling left with the exact width
                 // Restrict to {:<8} because "NOT NULL" has 8 letters max
-                let mut col_line = format!("  - {:<name_w$} | Tipo: {:<type_w$} | Restrição: {:<8}",
+                let mut col_line = format!("  {:<name_w$} | Tipo: {:<type_w$} | Restrição: {:<8}",
                                            col.name,
                                            col.column_type,
                                            null_str,
@@ -1051,7 +1052,7 @@ impl TemplateApp {
                     let r_desc = if rel.description.is_empty() { "" } else { &rel.description };
 
                     table_relations.push_str(&format!(
-                        "  - Relação: {}\n    Ligação: {}  ->  {}.{}\n    Cardinalidade: {}\n",
+                        "  Relação: {}\n     Ligação: {}  ->  {}.{}\n     Cardinalidade: {}\n",
                         rel.name,
                         origin_col.name,
                         target_table.name, target_col.name,
@@ -1059,7 +1060,7 @@ impl TemplateApp {
                     ));
 
                     if !r_desc.is_empty() {
-                        table_relations.push_str(&format!("    Descrição: {}\n", r_desc));
+                        table_relations.push_str(&format!("     Descrição: {}\n", r_desc));
                     }
                     table_relations.push_str("\n");
                 }
