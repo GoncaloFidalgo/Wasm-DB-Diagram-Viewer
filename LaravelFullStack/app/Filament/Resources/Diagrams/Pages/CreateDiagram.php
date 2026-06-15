@@ -151,7 +151,7 @@ BLADE
                 'name' => $state['name'] ?? 'Novo Diagrama',
                 'description' => $state['description'] ?? '',
                 'user_id' => auth()->id(),
-                'version' => 0,
+                'version' => 1,
             ]);
 
             return $this->redirect('/diagram/' . $diagramId);

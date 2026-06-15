@@ -6,38 +6,23 @@ use App\Filament\Actions\EditDiagramMetadataAction;
 use App\Filament\Actions\PublishDiagramAction;
 use App\Filament\Actions\SyncDiagramAction;
 use App\Filament\Resources\Diagrams\DiagramResource;
-use App\Filament\Resources\Diagrams\Pages\CreateDiagram;
-use App\Filament\Resources\Diagrams\Schemas\ExtractForm;
 use App\Models\Diagram;
 use App\Services\DatabaseExtractorService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Forms\Components\CheckboxList;
-use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\ViewField;
-use Filament\Infolists\Components\TextEntry;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Flex;
-use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\Width;
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\Facades\Cache;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\HtmlString;
-use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\On;
-use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class DiagramViewer extends Page
 {
@@ -76,14 +61,8 @@ class DiagramViewer extends Page
         $this->diagramId = $id;
 
         // Obter sempre a versão mais recente do diagrama
-        $query = Diagram::where('diagram_id', $this->diagramId);
+        $query = Diagram::where('diagram_id', $this->diagramId)->orderByDesc('version');
 
-        // Se houver "?v=2" no URL, carrega essa versão. Senão, carrega a mais recente.
-        if (request()->has('v')) {
-            $query->where('version', request('v'));
-        } else {
-            $query->orderByDesc('version');
-        }
         $diagram = $query->firstOrFail();
 
         $this->isOwner = auth()->check() && auth()->id() === $diagram->user_id;
@@ -186,28 +165,44 @@ class DiagramViewer extends Page
                                         ->label('Nova Versão')
                                         ->icon('heroicon-m-document-plus')
                                         ->color('primary')
+                                        ->requiresConfirmation()
+                                        ->modalHeading('Criar nova versão a partir da mais recente ?')
+                                        ->modalDescription(' ')
+                                        ->modalSubmitActionLabel('Sim, criar')
+                                        ->modalCancelActionLabel('Cancelar')
                                         ->action(function () {
-                                            $maxVersion = Diagram::where('diagram_id', $this->diagramId)->max('version');
-                                            $latest = Diagram::where('id', $this->recordId)->first();
+                                            $latest = Diagram::where('diagram_id', $this->diagramId)
+                                                ->orderByDesc('version')
+                                                ->first();
+                                            $newVersionNumber = $latest->version + 1;
 
-                                            Diagram::create([
+                                            $newDiagram = Diagram::create([
                                                 'diagram_id' => $latest->diagram_id,
                                                 'name' => $latest->name,
                                                 'description' => $latest->description,
                                                 'diagram' => $latest->diagram,
                                                 'user_id' => $latest->user_id,
-                                                'version' => $maxVersion + 1,
+                                                'version' => $newVersionNumber,
                                                 'visibility' => 'link',
                                                 'is_published' => false,
                                             ]);
+
+
+                                            $this->recordId = $newDiagram->id;
+                                            $this->selectedVersionId = $newDiagram->id;
+                                            $this->isPublished = false;
+
+                                            $this->dispatch('reload-wasm-schema',
+                                                schema: json_encode($newDiagram->diagram),
+                                                isReadOnly: false,
+                                                hasUnsavedChanges: false
+                                            );
 
                                             Notification::make()
                                                 ->title('Nova versão criada!')
                                                 ->body('')
                                                 ->success()
                                                 ->send();
-
-                                            return redirect(request()->header('Referer'));
                                         })
                                         ->visible(function () {
                                             // 1. Se não for o dono ou a versão atual não estiver publicada, esconde.

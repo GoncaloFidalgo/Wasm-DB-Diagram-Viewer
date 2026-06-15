@@ -69,7 +69,7 @@ class PublishDiagramAction
             ])
             ->action(function (array $data, $record, $livewire) {
                 $diagram = self::getDiagram($record, $livewire);
-
+                $isNewlyPublished = false;
                 if ($diagram) {
                     // Aplica a visibilidade a todas as versões deste diagrama (mesmo diagram_id)
                     Diagram::where('diagram_id', $diagram->diagram_id)->update([
@@ -79,6 +79,7 @@ class PublishDiagramAction
                     // Se a versão que estamos a mexer ainda NÃO for publicada, publicamos e bloqueamos a edição
                     if (!$diagram->is_published) {
                         $diagram->update(['is_published' => true]);
+                        $isNewlyPublished = true;
                     }
                 }
 
@@ -87,7 +88,17 @@ class PublishDiagramAction
                     ->success()
                     ->send();
 
-                return redirect(request()->header('Referer'));
+                if (isset($livewire->recordId)) {
+                    $livewire->isPublished = true;
+
+                    if ($isNewlyPublished && $diagram) {
+                        $livewire->dispatch('reload-wasm-schema',
+                            schema: json_encode($diagram->diagram),
+                            isReadOnly: true,
+                            hasUnsavedChanges: false
+                        );
+                    }
+                }
             });
     }
 
