@@ -1511,6 +1511,77 @@ impl eframe::App for TemplateApp {
                     self.selected.clear();
                 }
 
+                // Drag and Drop area para selecionar objetos
+                if !self.read_only {
+                    let start_drag_id = Id::new("start_background_drag_pos");
+                    if bg_response.drag_started_by(PointerButton::Primary) {
+                        ctx.data_mut(|data| {
+                            data.insert_temp(start_drag_id, bg_response.interact_pointer_pos().unwrap());
+                        });
+                    }
+
+                    if let Some(start_drag_pos) = ctx.data(|data| {
+                        data.get_temp::<Pos2>(start_drag_id)
+                    }) {
+                        if let Some(end_drag_pos) = bg_response.interact_pointer_pos() {
+                            let selection_area_rect = Rect::from_two_pos(start_drag_pos, end_drag_pos);
+                            self.selected.clear();
+
+                            // Adicionar todas as tabelas dentro da area aos selecionados
+                            for (table_idx, table) in self.tables.iter().enumerate() {
+                                if selection_area_rect.contains(self.scene_transform.mul_pos(table.pos)) {
+                                    toggle_selected(&mut self.selected, Selected::Table { table: table_idx, column: None }, 0, self.read_only);
+                                }
+                            }
+
+                            // Adicionar todas as relações dentro da area aos selecionados
+                            for (rela_idx, relation) in self.relations.iter().enumerate() {
+                                let (rect_a, rect_b) = ctx.data(|data| {
+                                    (
+                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[0], relation.columns[0]))),
+                                        data.get_temp::<Rect>(Id::new(("column_rect", relation.tables[1], relation.columns[1])))
+                                    )
+                                });
+
+                                let (Some(rect_a), Some(rect_b)) = (rect_a, rect_b) else {
+                                    continue;
+                                };
+
+                                let start_relation_pos = rect_a.center();
+                                let end_relation_pos = rect_b.center();
+
+                                if relation.relation_segments.is_empty() {
+                                    if selection_area_rect.contains(self.scene_transform.mul_pos(start_relation_pos.lerp(end_relation_pos, 0.5))) {
+                                        toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), self.read_only);
+                                    }
+                                } else {
+                                    for (seg_idx, segment) in relation.relation_segments.iter().enumerate() {
+                                        let segment_pos = if seg_idx % 2 == 0 {
+                                            let mid_y = (if seg_idx == 0 {start_relation_pos.y} else {relation.relation_segments[seg_idx-1]} +
+                                                if seg_idx == relation.relation_segments.len()-1 {end_relation_pos.y} else {relation.relation_segments[seg_idx+1]}) / 2.0;
+                                            pos2(*segment, mid_y)
+                                        } else {
+                                            pos2((relation.relation_segments[seg_idx-1] + relation.relation_segments[seg_idx+1]) / 2.0, *segment)
+                                        };
+                                        if selection_area_rect.contains(self.scene_transform.mul_pos(segment_pos)) {
+                                            toggle_selected(&mut self.selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), self.read_only);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Desenhar uma area de seleção
+                            painter.rect(selection_area_rect, CornerRadius::ZERO, Color32::from_rgb(160, 160, 255), Stroke::new(3.0, Color32::BLUE), StrokeKind::Middle);
+                        }
+                    }
+
+                    if bg_response.drag_stopped_by(PointerButton::Primary) {
+                        ctx.data_mut(|data| {
+                            data.remove_temp::<Pos2>(start_drag_id);
+                        });
+                    }
+                }
+
                 // Mover o selecionado entre tabelas/colunas
                 if self.selected.len() == 1 {
                     match &mut self.selected[0] {
