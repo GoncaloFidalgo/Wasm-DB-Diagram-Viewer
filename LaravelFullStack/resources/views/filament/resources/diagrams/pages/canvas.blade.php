@@ -168,20 +168,27 @@
         }
     });
     window.addEventListener('trigger-rust-save', () => {
+        //console.time("LivewireSave");
         if (window.wasmHandle) {
             window.wasmHandle.trigger_save();
         }
     });
-
+    window.saveDiagramState = function (jsonString) {
+        //console.timeEnd("LivewireSave");
+        Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
+        new FilamentNotification()
+            .title('Sucesso!')
+            .body('Diagrama guardado com sucesso.')
+            .success()
+            .send();
+    };
     document.addEventListener('livewire:navigated', initWasm, {once: true});
 
     if (document.readyState === 'complete') {
         initWasm();
     }
 
-    window.saveDiagramState = function (jsonString) {
-        Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
-    };
+
     window.addEventListener('reload-wasm-schema', (event) => {
         if (window.wasmHandle) {
             const schema = event.detail.schema;

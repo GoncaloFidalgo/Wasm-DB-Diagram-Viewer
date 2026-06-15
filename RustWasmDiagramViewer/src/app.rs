@@ -982,6 +982,97 @@ impl TemplateApp {
             }
         }
     }
+    pub fn generate_text_export(&self) -> String {
+        let mut report = String::from("");
+
+        report.push_str("== TABELAS E RELAÇÕES ==\n");
+
+        for (table_idx, table) in self.tables.iter().enumerate() {
+            report.push_str(&format!("\nTabela: {}\n", table.name));
+
+            let t_desc = if table.description.is_empty() { "" } else { &table.description };
+            if !t_desc.is_empty() {
+                report.push_str(&format!("Descrição: {}\n", t_desc));
+            }
+
+            report.push_str("Colunas:\n");
+
+            // Loop first to discover the max size of each field in the table
+            let mut max_name_len = 0;
+            let mut max_type_len = 0;
+
+            for col in &table.columns {
+                max_name_len = max_name_len.max(col.name.chars().count());
+                max_type_len = max_type_len.max(col.column_type.chars().count());
+            }
+
+            // Loop second time to write the columns
+            for col in &table.columns {
+                let null_str = if col.nullable { "NULL" } else { "NOT NULL" };
+
+                // {:<name_w$} aling left with the exact width
+                // Restrict to {:<8} because "NOT NULL" has 8 letters max
+                let mut col_line = format!("  - {:<name_w$} | Tipo: {:<type_w$} | Restrição: {:<8}",
+                                           col.name,
+                                           col.column_type,
+                                           null_str,
+                                           name_w = max_name_len,
+                                           type_w = max_type_len
+                );
+
+                if !col.key_type.is_empty() {
+                    col_line.push_str(&format!(" | Chave: {}", col.key_type));
+                }
+                col_line.push_str("\n");
+
+                if !col.description.is_empty() {
+                    col_line.push_str(&format!("\t* {}\n", col.description));
+                }
+
+                report.push_str(&col_line);
+            }
+
+            let mut table_relations = String::new();
+
+            for rel in &self.relations {
+                if rel.tables[0] == table_idx {
+                    let target_table = &self.tables[rel.tables[1]];
+
+                    let origin_col = &table.columns[rel.columns[0]];
+                    let target_col = &target_table.columns[rel.columns[1]];
+
+                    let is_nullable = origin_col.nullable;
+                    let is_unique = origin_col.unique;
+
+                    let min_card = if is_nullable { "0" } else { "1" };
+                    let max_card = if is_unique { "1" } else { "N" };
+                    let cardinalidade = format!("{}:{}", min_card, max_card);
+
+                    let r_desc = if rel.description.is_empty() { "" } else { &rel.description };
+
+                    table_relations.push_str(&format!(
+                        "  - Relação: {}\n    Ligação: {}  ->  {}.{}\n    Cardinalidade: {}\n",
+                        rel.name,
+                        origin_col.name,
+                        target_table.name, target_col.name,
+                        cardinalidade,
+                    ));
+
+                    if !r_desc.is_empty() {
+                        table_relations.push_str(&format!("    Descrição: {}\n", r_desc));
+                    }
+                    table_relations.push_str("\n");
+                }
+            }
+
+            if !table_relations.is_empty() {
+                report.push_str("Relações:\n");
+                report.push_str(&table_relations);
+            }
+        }
+
+        report
+    }
 }
 
 fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation) {
@@ -1348,81 +1439,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         }
     }
 
-    pub fn generate_text_export(&self) -> String {
-        let mut report = String::from("");
 
-        report.push_str("== TABELAS E RELAÇÕES ==\n");
-
-        for (table_idx, table) in self.tables.iter().enumerate() {
-            report.push_str(&format!("\nTabela: {}\n", table.name));
-
-            let t_desc = if table.description.is_empty() { "" } else { &table.description };
-            if !t_desc.is_empty() {
-                report.push_str(&format!("Descrição: {}\n", t_desc));
-            }
-
-            report.push_str("Colunas:\n");
-
-            for col in &table.columns {
-                let null_str = if col.nullable { "NULL" } else { "NOT NULL" };
-
-                let mut col_line = format!("  - {} | Tipo: {} | Restrição: {}",
-                                           col.name, col.column_type, null_str
-                );
-
-                if !col.key_type.is_empty() {
-                    col_line.push_str(&format!(" | Chave: {}", col.key_type));
-                }
-
-                if !col.description.is_empty() {
-                    col_line.push_str(&format!(" | Descrição: {}", col.description));
-                }
-
-                col_line.push('\n');
-                report.push_str(&col_line);
-            }
-
-            let mut table_relations = String::new();
-
-            for rel in &self.relations {
-                if rel.tables[0] == table_idx {
-                    let target_table = &self.tables[rel.tables[1]];
-
-                    let origin_col = &table.columns[rel.columns[0]];
-                    let target_col = &target_table.columns[rel.columns[1]];
-
-                    let is_nullable = origin_col.nullable;
-                    let is_unique = origin_col.unique;
-
-                    let min_card = if is_nullable { "0" } else { "1" };
-                    let max_card = if is_unique { "1" } else { "N" };
-                    let cardinalidade = format!("{}:{}", min_card, max_card);
-
-                    let r_desc = if rel.description.is_empty() { "" } else { &rel.description };
-
-                    table_relations.push_str(&format!(
-                        "  - Relação: {}\n    Ligação: {}  ->  {}.{}\n    Cardinalidade: {}\n",
-                        rel.name,
-                        origin_col.name,
-                        target_table.name, target_col.name,
-                        cardinalidade,
-                    ));
-
-                    if !r_desc.is_empty() {
-                        table_relations.push_str(&format!("    Descrição: {}\n", r_desc));
-                    }
-                    table_relations.push_str("\n");
-                }
-            }
-
-            if !table_relations.is_empty() {
-                report.push_str("Relações:\n");
-                report.push_str(&table_relations);
-            }
-        }
-
-        report
-    }
 }
 
 fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool) {

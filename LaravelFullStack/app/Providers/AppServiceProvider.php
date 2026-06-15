@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use Filament\Livewire\Notifications;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Alignment;
+use Filament\Support\Enums\VerticalAlignment;
 use Filament\Support\Facades\FilamentColor;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -30,5 +33,7 @@ class AppServiceProvider extends ServiceProvider
         FilamentColor::register([
             'primary' => Color::Blue,
         ]);
+        Notifications::alignment(Alignment::Center);
+        Notifications::verticalAlignment(VerticalAlignment::Start);
     }
 }
