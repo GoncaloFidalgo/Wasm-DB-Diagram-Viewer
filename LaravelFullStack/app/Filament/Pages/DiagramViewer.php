@@ -251,7 +251,9 @@ class DiagramViewer extends Page
                                         ->label('Gravar')
                                         ->icon('heroicon-m-document-check')
                                         ->color('primary')
-                                        ->action(fn() => $this->dispatch('trigger-rust-save'))
+                                        ->extraAttributes([
+                                            'x-on:click.prevent' => '$dispatch(\'trigger-rust-save\')',
+                                        ])
                                         ->visible(fn() => !$this->isPublished),
 
                                     PublishDiagramAction::make()
@@ -289,11 +291,11 @@ class DiagramViewer extends Page
             'diagram' => json_decode($jsonPayload, true),
         ]);
 
-        Notification::make()
-            ->title('Sucesso!')
-            ->body('Diagrama guardado com sucesso.')
-            ->success()
-            ->send();
+//        Notification::make()
+//            ->title('Sucesso!')
+//            ->body('Diagrama guardado com sucesso.')
+//            ->success()
+//            ->send();
     }
 
     #[On('update-sync-json')]
