@@ -52,7 +52,7 @@ pub enum Selected {
     Table { table: usize, column: Option<usize> },
     Relation { relation: usize, segment: Option<usize> },
 }
-fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize, read_only: bool) {
+fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize, _read_only: bool) {
     match item {
         Selected::Relation { relation, segment } => {
             let rela_idx = relation;
@@ -130,7 +130,7 @@ fn toggle_selected(selected: &mut Vec<Selected>, item: Selected, rela_len: usize
 
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(window) = web_sys::window() && !read_only {
+        if let Some(window) = web_sys::window() && !_read_only {
             let _ = js_sys::Reflect::set(
                 &window,
                 &wasm_bindgen::JsValue::from_str("hasUnsavedChanges"),
@@ -191,7 +191,7 @@ impl Default for TemplateApp {
                             name: String::from("terceira_id"),
                             column_type: String::from("NUMBER"),
                             nullable: false,
-                            unique: false,
+                            unique: true,
                             key_type: String::from("FK"),
                             description: String::new(),
                         },
@@ -265,13 +265,6 @@ impl Default for TemplateApp {
                     relation_segments: vec![],
                     tables: [2, 3],
                     columns: [0, 0],
-                    description: String::new(),
-                },
-                Relation {
-                    name: String::new(),
-                    relation_segments: vec![],
-                    tables: [3, 2],
-                    columns: [1, 0],
                     description: String::new(),
                 },
                 Relation {
@@ -373,39 +366,64 @@ impl Table {
         relations: &Vec<Relation>,
     ) -> (Vec2, Option<usize>) {
         let table_width = ctx.fonts_mut(|f| {
-            let header_width = f
-                .layout_no_wrap(self.name.clone(), FontId::proportional(18.5), HEADER_TEXT)
+            let header_width = 20.0 + f
+                .layout_no_wrap(self.name.clone(), FontId::proportional(18.0), HEADER_TEXT)
                 .rect
                 .width();
 
             let mut max_col_width: f32 = 0.0;
 
             for col in &self.columns {
+                // Lado esquerdo primeiro
+                let mut total = 12.0;
+                // PK/FP
+                if !col.key_type.is_empty() {
+                    let key_w = f
+                        .layout_no_wrap(col.key_type.clone(), FontId::proportional(11.0), Color32::BLACK)
+                        .rect
+                        .width();
+                    total += key_w + 6.0;
+                }
                 // Nome da coluna
                 let name_w = f
-                    .layout_no_wrap(col.name.clone(), FontId::proportional(13.0), COL_NAME)
+                    .layout_no_wrap(col.name.clone(), FontId::proportional(13.0), Color32::BLACK)
                     .rect
                     .width();
+                total += name_w;
 
+                // Lado direito depois
+                total += 10.0;
                 // Tipo de dados
                 let type_w = f
-                    .layout_no_wrap(
-                        col.column_type.clone(),
-                        FontId::proportional(11.5),
-                        COL_TYPE,
-                    )
+                    .layout_no_wrap(col.column_type.clone(), FontId::proportional(11.5), Color32::BLACK)
                     .rect
                     .width();
+                total += type_w + 6.0;
 
-                // Adicionar +40 se o campo for nullable
-                let null_w = if col.nullable { 40.0 } else { 0.0 };
+                // NULLABLE
+                if col.nullable {
+                    // Pad + null size
+                    let null_w = 8.0 + f
+                        .layout_no_wrap("NULL".to_owned(), FontId::monospace(10.0), Color32::BLACK)
+                        .rect
+                        .width();
+                    total += null_w + 6.0;
+                }
 
-                // Somar todas as widths +30 para ter um pouco de margem
-                let total = name_w + null_w + type_w + 30.0;
+                // UNIQUE
+                if col.nullable {
+                    // Pad + null size
+                    let unique_w = 8.0 + f
+                        .layout_no_wrap("UNIQUE".to_owned(), FontId::monospace(10.0), Color32::BLACK)
+                        .rect
+                        .width();
+                    total += unique_w + 6.0;
+                }
+
                 max_col_width = max_col_width.max(total);
             }
 
-            300.0_f32.max(header_width.max(max_col_width))
+            300.0_f32.max(header_width).max(max_col_width)
         });
 
         let mut delta_used = Vec2::ZERO;
@@ -653,9 +671,9 @@ impl Column {
             );
             painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
             painter.galley(badge_rect.min + pad, null_galley, NULL_TEXT);
+            right_x -= badge_size.x + 6.0;
         }
 
-        right_x -= type_galley.rect.width() - 6.0;
         if self.unique {
             let unique_galley =
                 painter.layout_no_wrap("UNIQUE".to_owned(), FontId::monospace(10.0), NULL_TEXT);
