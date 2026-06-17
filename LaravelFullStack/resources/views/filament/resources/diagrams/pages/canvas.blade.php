@@ -6,18 +6,27 @@
     header.fi-page-header {
         display: none !important;
     }
-
+    .fi-sc.fi-sc-has-gap {
+        gap: calc(var(--spacing)) !important;
+    }
     .fi-main {
         padding-top: 0 !important;
+        padding-bottom: 0 !important;
     }
-
+    .fi-main-ctn {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    .fi-sc-section {
+        zoom: 0.9;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
     html {
         /* Remove touch delay: */
         touch-action: manipulation;
     }
-    .fi-main-ctn {
-        padding-top: 0 !important;
-    }
+
     #canvas_id {
         margin-right: auto;
         margin-left: auto;
@@ -34,10 +43,9 @@
         overflow: hidden;
         margin: 0 !important;
         padding: 0 !important;
-        height: 90vh;
+        height: calc(100vh - 65px);
         width: 100% !important;
         z-index: 10;
-        top: -20px;
     }
     @media (max-width: 1023px) {
         .custom-toolbar > div {
@@ -50,9 +58,7 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
-    .fi-sc-section {
-        zoom: 0.9;
-    }
+
 
 </style>
 
@@ -109,26 +115,36 @@
         }
     };
 
-    window.handleVersionChange = function(event, element, previousValue) {
-        console.log("Dropdown alterado!", previousValue, "->", element.value);
+window.handleVersionChange = function(event, element, previousValue) {
 
-        if (window.hasUnsavedChanges) {
-            if (!confirm(`Tem alterações não guardadas. Quer mesmo mudar de versão e perder o progresso?`)) {
-                event.stopImmediatePropagation();
-                event.preventDefault();
-                element.value = previousValue;
-                return previousValue;
+    if (window.hasUnsavedChanges) {
+        if (confirm(`Tem alterações não guardadas. Deseja guardá-las antes de mudar de versão?`)) {
+
+            event.stopImmediatePropagation();
+            event.preventDefault();
+
+            window.pendingVersion = element.value;
+            window.pendingSelectElement = element;
+
+            element.value = previousValue;
+
+            if (window.wasmHandle) {
+                window.wasmHandle.trigger_save();
             }
+
+            window.hasUnsavedChanges = false;
+            return previousValue;
+        } else {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            element.value = previousValue;
+            return previousValue;
         }
+    }
 
-        window.hasUnsavedChanges = false;
-
-        if (typeof window.showCanvasLoader === "function") {
-            window.showCanvasLoader();
-        }
-
-        return element.value;
-    };
+    if (typeof window.showCanvasLoader === "function") window.showCanvasLoader();
+    return element.value;
+};
 
 </script>
 <script type="module">
@@ -167,11 +183,54 @@
             e.returnValue = true;
         }
     });
-    window.addEventListener('trigger-rust-save', () => {
+
+if (!window.diagramListenersBound) {
+        window.addEventListener('trigger-rust-save', () => {
         if (window.wasmHandle) {
             window.wasmHandle.trigger_save();
         }
     });
+
+    window.addEventListener('trigger-export-png', () => {
+        if (window.wasmHandle) {
+            window.wasmHandle.trigger_export();
+        }
+    });
+
+    window.addEventListener('trigger-export-txt', (event) => {
+    if (event.detail && event.detail.name) {
+            window.diagramExportName = event.detail.name;
+        }
+            if (window.wasmHandle) {
+                window.wasmHandle.trigger_txt_export();
+            }
+    });
+
+    window.diagramListenersBound = true;
+}
+
+window.saveDiagramState = function (jsonString) {
+    Livewire.dispatch('save-diagram', { jsonPayload: jsonString });
+
+// if it was the version change that triggered the save
+if (window.pendingVersion && window.pendingSelectElement) {
+        setTimeout(() => {
+            let selectElement = window.pendingSelectElement;
+            selectElement.value = window.pendingVersion;
+            selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+            window.pendingVersion = null;
+            window.pendingSelectElement = null;
+        }, 500);
+
+    } else {
+        new FilamentNotification()
+            .title('Sucesso!')
+            .body('Diagrama guardado com sucesso.')
+            .success()
+            .send();
+    }
+};
 
     document.addEventListener('livewire:navigated', initWasm, {once: true});
 
@@ -179,9 +238,7 @@
         initWasm();
     }
 
-    window.saveDiagramState = function (jsonString) {
-        Livewire.dispatch('save-diagram', {jsonPayload: jsonString});
-    };
+
     window.addEventListener('reload-wasm-schema', (event) => {
         if (window.wasmHandle) {
             const schema = event.detail.schema;
@@ -279,20 +336,9 @@
             document.body.removeChild(link);
         }
     };
-    document.addEventListener('livewire:initialized', () => {
-        Livewire.on('trigger-export-png', () => {
-            if (window.wasmHandle) {
-                window.wasmHandle.trigger_export();
-            }
-        });
-        Livewire.on('trigger-export-txt', (data) => {
-            window.diagramExportName = data.name;
 
-            if (window.wasmHandle) {
-                window.wasmHandle.trigger_txt_export();
-            }
-        });
-    });
+
+
     window.diagramExportName = 'diagrama';
     window.downloadTextFile = function(content) {
         const blob = new Blob([content], { type: 'text/plain' });

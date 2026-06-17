@@ -74,7 +74,7 @@ class DiagramsTable
                     ->icon('heroicon-m-arrow-right-circle')
                     ->color('primary')
                     ->button()
-                    ->url(fn ($record) => '/diagram/' . $record->diagram_id . '?v=' . $record->version . '&source=mine'),
+                    ->url(fn ($record) => '/diagram/' . $record->diagram_id . '?source=mine'),
             ])
             ->searchPlaceholder('Pesquisar pelo nome')
 

@@ -1241,7 +1241,6 @@ impl TemplateApp {
             }
         }
     }
-
     pub fn generate_text_export(&self) -> String {
         let mut report = String::from("");
 
@@ -1251,28 +1250,45 @@ impl TemplateApp {
             report.push_str(&format!("\nTabela: {}\n", table.name));
 
             let t_desc = if table.description.is_empty() { "" } else { &table.description };
+
             if !t_desc.is_empty() {
-                report.push_str(&format!("Descrição: {}\n", t_desc));
+                report.push_str(&format!("* {}\n", t_desc));
             }
 
             report.push_str("Colunas:\n");
 
+            // Loop first to discover the max size of each field in the table
+            let mut max_name_len = 0;
+            let mut max_type_len = 0;
+
+            for col in &table.columns {
+                max_name_len = max_name_len.max(col.name.chars().count());
+                max_type_len = max_type_len.max(col.column_type.chars().count());
+            }
+
+            // Loop second time to write the columns
             for col in &table.columns {
                 let null_str = if col.nullable { "NULL" } else { "NOT NULL" };
 
-                let mut col_line = format!("  - {} | Tipo: {} | Restrição: {}",
-                                           col.name, col.column_type, null_str
+                // {:<name_w$} aling left with the exact width
+                // Restrict to {:<8} because "NOT NULL" has 8 letters max
+                let mut col_line = format!("  {:<name_w$} | Tipo: {:<type_w$} | Restrição: {:<8}",
+                                           col.name,
+                                           col.column_type,
+                                           null_str,
+                                           name_w = max_name_len,
+                                           type_w = max_type_len
                 );
 
                 if !col.key_type.is_empty() {
                     col_line.push_str(&format!(" | Chave: {}", col.key_type));
                 }
+                col_line.push_str("\n");
 
                 if !col.description.is_empty() {
-                    col_line.push_str(&format!(" | Descrição: {}", col.description));
+                    col_line.push_str(&format!("\t* {}\n", col.description));
                 }
 
-                col_line.push('\n');
                 report.push_str(&col_line);
             }
 
@@ -1295,7 +1311,7 @@ impl TemplateApp {
                     let r_desc = if rel.description.is_empty() { "" } else { &rel.description };
 
                     table_relations.push_str(&format!(
-                        "  - Relação: {}\n    Ligação: {}  ->  {}.{}\n    Cardinalidade: {}\n",
+                        "  Relação: {}\n     Ligação: {}  ->  {}.{}\n     Cardinalidade: {}\n",
                         rel.name,
                         origin_col.name,
                         target_table.name, target_col.name,
@@ -1303,7 +1319,7 @@ impl TemplateApp {
                     ));
 
                     if !r_desc.is_empty() {
-                        table_relations.push_str(&format!("    Descrição: {}\n", r_desc));
+                        table_relations.push_str(&format!("     Descrição: {}\n", r_desc));
                     }
                     table_relations.push_str("\n");
                 }

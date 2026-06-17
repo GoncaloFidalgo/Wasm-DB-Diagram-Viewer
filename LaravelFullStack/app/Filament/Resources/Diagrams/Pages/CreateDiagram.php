@@ -151,10 +151,10 @@ BLADE
                 'name' => $state['name'] ?? 'Novo Diagrama',
                 'description' => $state['description'] ?? '',
                 'user_id' => auth()->id(),
-                'version' => 0,
+                'version' => 1,
             ]);
 
-            return $this->redirect('/diagram/' . $diagramId, navigate: true);
+            return $this->redirect('/diagram/' . $diagramId);
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
 
