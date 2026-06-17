@@ -899,221 +899,282 @@ impl TemplateApp {
             .default_size(vec2(300.0, 400.0))
             .min_width(250.0)
             .show(ctx, |ui| {
-                ui.label(RichText::new("Diagram Options:").strong().size(30.0));
-                ui.separator();
+                ui.collapsing(RichText::new("Diagram Options").strong().size(30.0), |ui| {
+                    ui.label(RichText::new("Cardinality Display").strong().size(15.0));
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Always, "Always");
+                        ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::SelectedOnly, "SelectedOnly");
+                        ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Never, "Never");
+                    });
 
-                ui.label(RichText::new("Cardinality Display").strong().size(15.0));
-                ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Always, "Always");
-                    ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::SelectedOnly, "SelectedOnly");
-                    ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Never, "Never");
-                });
+                    ui.label(RichText::new("Description Indicator").strong().size(15.0));
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
+                        ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Missing, "Missing");
+                        ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Existing, "Existing");
+                    });
 
-                ui.label(RichText::new("Description Indicator").strong().size(15.0));
-                ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
-                    ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Missing, "Missing");
-                    ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Existing, "Existing");
-                });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Undo Redo").strong().size(15.0));
+                        ui.label(RichText::new("(CTRL + Z/CTRL + Y)").size(10.0));
+                    });
+                    let can_undo = self.undoer.has_undo(&self.app_state);
+                    let can_redo = self.undoer.has_redo(&self.app_state);
+                    ui.horizontal(|ui| {
+                        let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
+                        let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
 
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Undo Redo").strong().size(15.0));
-                    ui.label(RichText::new("(CTRL + Z/CTRL + Y)").size(10.0));
-                });
-                let can_undo = self.undoer.has_undo(&self.app_state);
-                let can_redo = self.undoer.has_redo(&self.app_state);
-                ui.horizontal(|ui| {
-                    let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
-                    let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
-
-                    if (undo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)})) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
-                        self.app_state = undo_text.clone();
-                    }
-                    if (redo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)})) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
-                        self.app_state = redo_text.clone();
-                    }
-                    if undo || redo {
-                        self.tables = self.app_state.tables.clone();
-                        self.relations = self.app_state.relations.clone();
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Search Table").strong().size(15.0));
-                    ui.label(RichText::new("(Case Sensitive)").size(10.0));
-                });
-                ui.horizontal(|ui| {
-                    let lost_focus = ui.text_edit_singleline(&mut self.options_menu.search_table).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    if ui.button(RichText::new("Search").strong()).clicked() || lost_focus {
-                        for table in self.tables.iter() {
-                            if table.name == self.options_menu.search_table {
-                                self.scene_transform.translation = screen_rect.center().to_vec2() - (table.pos.to_vec2() * self.scene_transform.scaling);
-                            }
+                        if (undo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)})) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
+                            self.app_state = undo_text.clone();
                         }
-                    }
-                });
+                        if (redo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)})) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
+                            self.app_state = redo_text.clone();
+                        }
+                        if undo || redo {
+                            self.tables = self.app_state.tables.clone();
+                            self.relations = self.app_state.relations.clone();
+                        }
+                    });
 
-                ui.separator();
-                ui.label(RichText::new("Statistics:").strong().size(30.0));
-                ui.separator();
-                
-                ui.separator();
-                ui.label(RichText::new("Selected Object:").strong().size(30.0));
-                ui.separator();
-                if let Some(selected) = self.selected.last() {
-                    match selected {
-                        Selected::Table { table, column } => {
-                            match column {
-                                None => {
-                                    let t = &mut self.tables[*table];
-
-                                    // --- Table grid ---
-                                    Grid::new("table_grid")
-                                        .num_columns(2)
-                                        .spacing([40.0, 8.0])
-                                        .show(ui, |ui| {
-                                            ui.label(RichText::new("Type").strong().size(16.5));
-                                            ui.label(RichText::new("Table").size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Name").strong().size(16.5));
-                                            ui.label(RichText::new(&t.name).size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Columns").strong().size(16.5));
-                                            ui.label(RichText::new(t.columns.len().to_string()).size(16.5));
-                                            ui.end_row();
-                                        });
-
-                                    ui.add_space(10.0);
-                                    ui.separator();
-                                    ui.add_space(5.0);
-
-                                    // --- Description ---
-                                    ui.label(RichText::new("Description:").size(19.0));
-                                    ui.add_enabled_ui(!self.read_only, |ui| {
-                                        ui.add_sized(
-                                            ui.available_size(),
-                                            TextEdit::multiline(&mut t.description)
-                                                .font(FontId::proportional(19.0))
-                                        );
-                                    });
-                                },
-                                Some(column_idx) => {
-                                    // Save table name by clonning
-                                    let table_name = self.tables[*table].name.clone();
-
-                                    // Get the column without memory conflicts
-                                    let c = &mut self.tables[*table].columns[*column_idx];
-
-                                    // --- Column grid ---
-                                    Grid::new("column_grid")
-                                        .num_columns(2)
-                                        .spacing([40.0, 8.0])
-                                        .show(ui, |ui| {
-                                            ui.label(RichText::new("Type").strong().size(16.5));
-                                            ui.label(RichText::new("Column").size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Table").strong().size(16.5));
-                                            ui.label(RichText::new(table_name).size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Name").strong().size(16.5));
-                                            ui.label(RichText::new(&c.name).size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Data Type").strong().size(16.5));
-                                            ui.label(RichText::new(&c.column_type).monospace().size(16.5).color(Color32::from_gray(120)));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Key").strong().size(16.5));
-                                            let (key_text, key_color) = match c.key_type.as_str() {
-                                                "PK" => ("Primary Key", Color32::from_rgb(255, 170, 0)),
-                                                "FK" => ("Foreign Key", Color32::from_rgb(100, 150, 255)),
-                                                _ => ("No key", Color32::from_gray(130)),
-                                            };
-                                            ui.label(RichText::new(key_text).color(key_color).size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Nullable").strong().size(16.5));
-                                            let (null_text, null_color) = if c.nullable {
-                                                ("Yes", Color32::from_rgb(100, 160, 100))
-                                            } else {
-                                                ("No", Color32::from_rgb(180, 85, 85))
-                                            };
-                                            ui.label(RichText::new(null_text).color(null_color).size(16.5));
-                                            ui.end_row();
-
-                                            ui.label(RichText::new("Unique").strong().size(16.5));
-                                            let (null_text, null_color) = if c.unique {
-                                                ("Yes", Color32::from_rgb(100, 160, 100))
-                                            } else {
-                                                ("No", Color32::from_rgb(180, 85, 85))
-                                            };
-                                            ui.label(RichText::new(null_text).color(null_color).size(16.5));
-                                            ui.end_row();
-
-                                        });
-
-                                    ui.add_space(10.0);
-                                    ui.separator();
-                                    ui.add_space(5.0);
-
-                                    // --- Description ---
-                                    ui.label(RichText::new("Description:").size(19.0));
-                                    ui.add_enabled_ui(!self.read_only, |ui| {
-                                        ui.add_sized(
-                                            ui.available_size(),
-                                            TextEdit::multiline(&mut c.description)
-                                                .font(FontId::proportional(19.0))
-                                        );
-                                    });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Search Table").strong().size(15.0));
+                        ui.label(RichText::new("(Case Sensitive)").size(10.0));
+                    });
+                    ui.horizontal(|ui| {
+                        let lost_focus = ui.text_edit_singleline(&mut self.options_menu.search_table).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        if ui.button(RichText::new("Search").strong()).clicked() || lost_focus {
+                            for table in self.tables.iter() {
+                                if table.name == self.options_menu.search_table {
+                                    self.scene_transform.translation = screen_rect.center().to_vec2() - (table.pos.to_vec2() * self.scene_transform.scaling);
                                 }
                             }
-                        },
-                        Selected::Relation { relation, .. } => {
-                            let r = &mut self.relations[*relation];
+                        }
+                    });
+                });
 
-                            // --- Relation grid ---
-                            Grid::new("relation_grid")
-                                .num_columns(2)
-                                .spacing([40.0, 8.0])
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new("Type").strong().size(16.5));
-                                    ui.label(RichText::new("Relation").size(16.5));
-                                    ui.end_row();
-
-                                    ui.label(RichText::new("Name").strong().size(16.5));
-                                    ui.label(RichText::new(&r.name).size(16.5));
-                                    ui.end_row();
-                                });
-
-                            ui.add_space(10.0);
-                            ui.separator();
-                            ui.add_space(5.0);
-
-                            // --- Description ---
-                            ui.label(RichText::new("Description:").size(19.0));
-                            ui.add_enabled_ui(!self.read_only, |ui| {
-                                ui.add_sized(
-                                    ui.available_size(),
-                                    TextEdit::multiline(&mut r.description)
-                                        .font(FontId::proportional(19.0))
-                                );
-                            });
+                ui.separator();
+                
+                ui.collapsing(RichText::new("Statistics").strong().size(30.0), |ui| {
+                    let total_tables = self.tables.len();
+                    let total_relations = self.relations.len();
+                    let mut total_columns = 0;
+                    let mut tables_with_desc = 0;
+                    let mut relations_with_desc = 0;
+                    let mut columns_with_desc = 0;
+                    for table in self.tables.iter() {
+                        total_columns += table.columns.len();
+                        if !table.description.is_empty() {
+                            tables_with_desc += 1;
+                        }
+                        for column in table.columns.iter() {
+                            if !column.description.is_empty() {
+                                columns_with_desc += 1;
+                            }
                         }
                     }
-                } else {
-                    // --- Empty state ---
-                    ui.label(
-                        RichText::new("No object selected.")
-                            .size(20.0)
-                            .strong()
-                    );
+                    for relation in self.relations.iter() {
+                        if !relation.description.is_empty() {
+                            relations_with_desc += 1;
+                        }
+                    }
+                    Grid::new("table_statistics_grid")
+                        .num_columns(2)
+                        .spacing([40.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label(RichText::new("Tables:").strong().size(16.5));
+                            ui.label(RichText::new(total_tables.to_string()).size(16.5));
+                            ui.end_row();
 
-                    ui.allocate_space(ui.available_size());
-                }
+                            ui.label(RichText::new("Columns:").strong().size(16.5));
+                            ui.label(RichText::new(total_columns.to_string()).size(16.5));
+                            ui.end_row();
+
+                            ui.label(RichText::new("Relations:").strong().size(16.5));
+                            ui.label(RichText::new(total_relations.to_string()).size(16.5));
+                            ui.end_row();
+
+                            ui.end_row();
+
+                            ui.label(RichText::new("Description:").strong().size(16.5));
+                            ui.end_row();
+
+                            ui.label(RichText::new("Tables:").strong().size(16.5));
+                            ui.label(RichText::new(tables_with_desc.to_string()+"/"+&total_tables.to_string()).size(16.5));
+                            ui.end_row();
+
+                            ui.label(RichText::new("Columns:").strong().size(16.5));
+                            ui.label(RichText::new(columns_with_desc.to_string()+"/"+&total_columns.to_string()).size(16.5));
+                            ui.end_row();
+
+                            ui.label(RichText::new("Relations:").strong().size(16.5));
+                            ui.label(RichText::new(relations_with_desc.to_string()+"/"+&total_relations.to_string()).size(16.5));
+                            ui.end_row();
+
+                            ui.label(RichText::new("Documentation:").strong().size(16.5));
+                            ui.label(RichText::new((100.0 * (tables_with_desc + columns_with_desc + relations_with_desc) as f32/(total_tables + total_columns + total_relations) as f32).floor().to_string()+"%").size(16.5));
+                            ui.end_row();
+                        });
+                });
+
+                ui.separator();
+
+                CollapsingHeader::new(RichText::new("Selected Object").strong().size(30.0)).default_open(true).show(ui, |ui| {
+                    ui.separator();
+                    if let Some(selected) = self.selected.last() {
+                        match selected {
+                            Selected::Table { table, column } => {
+                                match column {
+                                    None => {
+                                        let t = &mut self.tables[*table];
+
+                                        // --- Table grid ---
+                                        Grid::new("table_grid")
+                                            .num_columns(2)
+                                            .spacing([40.0, 8.0])
+                                            .show(ui, |ui| {
+                                                ui.label(RichText::new("Type").strong().size(16.5));
+                                                ui.label(RichText::new("Table").size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Name").strong().size(16.5));
+                                                ui.label(RichText::new(&t.name).size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Columns").strong().size(16.5));
+                                                ui.label(RichText::new(t.columns.len().to_string()).size(16.5));
+                                                ui.end_row();
+                                            });
+
+                                        ui.add_space(10.0);
+                                        ui.separator();
+                                        ui.add_space(5.0);
+
+                                        // --- Description ---
+                                        ui.label(RichText::new("Description:").size(19.0));
+                                        ui.add_enabled_ui(!self.read_only, |ui| {
+                                            ui.add_sized(
+                                                ui.available_size(),
+                                                TextEdit::multiline(&mut t.description)
+                                                    .font(FontId::proportional(19.0))
+                                            );
+                                        });
+                                    },
+                                    Some(column_idx) => {
+                                        // Save table name by clonning
+                                        let table_name = self.tables[*table].name.clone();
+
+                                        // Get the column without memory conflicts
+                                        let c = &mut self.tables[*table].columns[*column_idx];
+
+                                        // --- Column grid ---
+                                        Grid::new("column_grid")
+                                            .num_columns(2)
+                                            .spacing([40.0, 8.0])
+                                            .show(ui, |ui| {
+                                                ui.label(RichText::new("Type").strong().size(16.5));
+                                                ui.label(RichText::new("Column").size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Table").strong().size(16.5));
+                                                ui.label(RichText::new(table_name).size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Name").strong().size(16.5));
+                                                ui.label(RichText::new(&c.name).size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Data Type").strong().size(16.5));
+                                                ui.label(RichText::new(&c.column_type).monospace().size(16.5).color(Color32::from_gray(120)));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Key").strong().size(16.5));
+                                                let (key_text, key_color) = match c.key_type.as_str() {
+                                                    "PK" => ("Primary Key", Color32::from_rgb(255, 170, 0)),
+                                                    "FK" => ("Foreign Key", Color32::from_rgb(100, 150, 255)),
+                                                    _ => ("No key", Color32::from_gray(130)),
+                                                };
+                                                ui.label(RichText::new(key_text).color(key_color).size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Nullable").strong().size(16.5));
+                                                let (null_text, null_color) = if c.nullable {
+                                                    ("Yes", Color32::from_rgb(100, 160, 100))
+                                                } else {
+                                                    ("No", Color32::from_rgb(180, 85, 85))
+                                                };
+                                                ui.label(RichText::new(null_text).color(null_color).size(16.5));
+                                                ui.end_row();
+
+                                                ui.label(RichText::new("Unique").strong().size(16.5));
+                                                let (null_text, null_color) = if c.unique {
+                                                    ("Yes", Color32::from_rgb(100, 160, 100))
+                                                } else {
+                                                    ("No", Color32::from_rgb(180, 85, 85))
+                                                };
+                                                ui.label(RichText::new(null_text).color(null_color).size(16.5));
+                                                ui.end_row();
+
+                                            });
+
+                                        ui.add_space(10.0);
+                                        ui.separator();
+                                        ui.add_space(5.0);
+
+                                        // --- Description ---
+                                        ui.label(RichText::new("Description:").size(19.0));
+                                        ui.add_enabled_ui(!self.read_only, |ui| {
+                                            ui.add_sized(
+                                                ui.available_size(),
+                                                TextEdit::multiline(&mut c.description)
+                                                    .font(FontId::proportional(19.0))
+                                            );
+                                        });
+                                    }
+                                }
+                            },
+                            Selected::Relation { relation, .. } => {
+                                let r = &mut self.relations[*relation];
+
+                                // --- Relation grid ---
+                                Grid::new("relation_grid")
+                                    .num_columns(2)
+                                    .spacing([40.0, 8.0])
+                                    .show(ui, |ui| {
+                                        ui.label(RichText::new("Type").strong().size(16.5));
+                                        ui.label(RichText::new("Relation").size(16.5));
+                                        ui.end_row();
+
+                                        ui.label(RichText::new("Name").strong().size(16.5));
+                                        ui.label(RichText::new(&r.name).size(16.5));
+                                        ui.end_row();
+                                    });
+
+                                ui.add_space(10.0);
+                                ui.separator();
+                                ui.add_space(5.0);
+
+                                // --- Description ---
+                                ui.label(RichText::new("Description:").size(19.0));
+                                ui.add_enabled_ui(!self.read_only, |ui| {
+                                    ui.add_sized(
+                                        ui.available_size(),
+                                        TextEdit::multiline(&mut r.description)
+                                            .font(FontId::proportional(19.0))
+                                    );
+                                });
+                            }
+                        }
+                    } else {
+                        // --- Empty state ---
+                        ui.label(
+                            RichText::new("No object selected.")
+                                .size(20.0)
+                                .strong()
+                        );
+
+                        ui.allocate_space(ui.available_size());
+                    }
+                });
             });
     }
 
