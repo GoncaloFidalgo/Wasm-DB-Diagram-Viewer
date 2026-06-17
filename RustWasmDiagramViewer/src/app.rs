@@ -54,6 +54,7 @@ pub struct TemplateApp {
     #[serde(skip)]
     pub app_state: AppState,
     #[serde(skip)]
+    pub search_table: String,
     pub options_menu: OptionsMenu,
     pub scene_transform: TSTransform,
     #[serde(skip)]
@@ -64,19 +65,21 @@ pub struct AppState {
     pub tables: Vec<Table>,
     pub relations: Vec<Relation>,
 }
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 pub struct OptionsMenu {
     pub cardinality_display: CardinalityDisplay,
     pub description_indicator: DescriptionIndicator,
-    pub search_table: String,
 }
-#[derive(PartialEq, Clone, Copy)]
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy, Default)]
 pub enum CardinalityDisplay {
     Never,
+    #[default]
     SelectedOnly,
     Always,
 }
-#[derive(PartialEq, Clone, Copy)]
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy, Default)]
 pub enum DescriptionIndicator {
+    #[default]
     All,
     Missing,
     Existing,
@@ -180,7 +183,7 @@ impl Default for TemplateApp {
         Self {
             tables: vec![
                 Table {
-                    name: String::from("primeira"),
+                    name: String::from("segment"),
                     pos: pos2(200.0, 200.0),
                     columns: vec![
                         Column {
@@ -341,8 +344,8 @@ impl Default for TemplateApp {
             options_menu: OptionsMenu {
                 cardinality_display: CardinalityDisplay::SelectedOnly,
                 description_indicator: DescriptionIndicator::All,
-                search_table: String::new(),
             },
+            search_table: String::new(),
             scene_transform: TSTransform::IDENTITY,
             txt_export_trigger: Arc::new(Mutex::new(false)),
         }
@@ -800,7 +803,7 @@ impl TemplateApp {
         sync_trigger_clone: Arc<Mutex<bool>>,
         txt_export_trigger_clone: Arc<Mutex<bool>>,
     ) -> Self {
-        let mut app: TemplateApp = if let Some(storage) = cc.storage {
+        let mut app: TemplateApp = if let Some(storage) = cc.storage && false {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Self::default()
@@ -985,90 +988,40 @@ impl TemplateApp {
 
                     ui.add_space(20.0);
 
+                    ui.label(RichText::new("Search Table").strong().size(16.5));
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Search Table").strong().size(16.5));
-                        ui.label(RichText::new("(Case Sensitive)").size(10.0));
-                    });
-                    ui.horizontal(|ui| {
-                        let lost_focus = ui.text_edit_singleline(&mut self.options_menu.search_table).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        let lost_focus = ui.text_edit_singleline(&mut self.search_table).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                         if ui.button(RichText::new("Search").strong()).clicked() || lost_focus {
                             self.selected.clear();
+                            let mut smallest_name_table: Option<[usize; 2]> = None;// Name Len/Table Idx
                             for (table_idx, table) in self.tables.iter().enumerate() {
-                                if table.name == self.options_menu.search_table {
-                                    self.scene_transform.translation = screen_rect.center().to_vec2() - (table.pos.to_vec2() * self.scene_transform.scaling);
+                                if table.name.to_lowercase().starts_with(&self.search_table.to_lowercase()) {
+                                    if let Some(name_len_table_idx) = smallest_name_table {
+                                        if table.name.len() < name_len_table_idx[0] {
+                                            smallest_name_table = Some([table.name.len(), table_idx]);
+                                        }
+                                    } else {
+                                        smallest_name_table = Some([table.name.len(), table_idx]);
+                                    }
                                     self.selected.push(Selected::Table { table: table_idx, column: None });
-                                    break;
                                 }
+                            }
+                            if let Some(name_len_table_idx) = smallest_name_table {
+                                self.scene_transform.translation = screen_rect.center().to_vec2() - (self.tables[name_len_table_idx[1]].pos.to_vec2() * self.scene_transform.scaling);
+                                self.selected.retain(|s| {
+                                    !matches!(
+                                        s,
+                                        Selected::Table { table, .. }
+                                        if *table == name_len_table_idx[1]
+                                    )
+                                });
+                                self.selected.push(Selected::Table { table: name_len_table_idx[1], column: None });
                             }
                         }
                     });
+
+                    ui.add_space(10.0);
                 });
-
-                ui.separator();
-                
-                ui.collapsing(RichText::new("Statistics").strong().size(20.0), |ui| {
-                    let total_tables = self.tables.len();
-                    let total_relations = self.relations.len();
-                    let mut total_columns = 0;
-                    let mut tables_with_desc = 0;
-                    let mut relations_with_desc = 0;
-                    let mut columns_with_desc = 0;
-                    for table in self.tables.iter() {
-                        total_columns += table.columns.len();
-                        if !table.description.is_empty() {
-                            tables_with_desc += 1;
-                        }
-                        for column in table.columns.iter() {
-                            if !column.description.is_empty() {
-                                columns_with_desc += 1;
-                            }
-                        }
-                    }
-                    for relation in self.relations.iter() {
-                        if !relation.description.is_empty() {
-                            relations_with_desc += 1;
-                        }
-                    }
-                    Grid::new("table_statistics_grid")
-                        .num_columns(2)
-                        .spacing([40.0, 8.0])
-                        .show(ui, |ui| {
-                            ui.label(RichText::new("Tables:").strong().size(16.5));
-                            ui.label(RichText::new(total_tables.to_string()).size(16.5));
-                            ui.end_row();
-
-                            ui.label(RichText::new("Columns:").strong().size(16.5));
-                            ui.label(RichText::new(total_columns.to_string()).size(16.5));
-                            ui.end_row();
-
-                            ui.label(RichText::new("Relations:").strong().size(16.5));
-                            ui.label(RichText::new(total_relations.to_string()).size(16.5));
-                            ui.end_row();
-
-                            ui.end_row();
-
-                            ui.label(RichText::new("Description:").strong().size(16.5));
-                            ui.end_row();
-
-                            ui.label(RichText::new("Tables:").strong().size(16.5));
-                            ui.label(RichText::new(tables_with_desc.to_string()+"/"+&total_tables.to_string()).size(16.5));
-                            ui.end_row();
-
-                            ui.label(RichText::new("Columns:").strong().size(16.5));
-                            ui.label(RichText::new(columns_with_desc.to_string()+"/"+&total_columns.to_string()).size(16.5));
-                            ui.end_row();
-
-                            ui.label(RichText::new("Relations:").strong().size(16.5));
-                            ui.label(RichText::new(relations_with_desc.to_string()+"/"+&total_relations.to_string()).size(16.5));
-                            ui.end_row();
-
-                            ui.label(RichText::new("Documentation:").strong().size(16.5));
-                            ui.label(RichText::new((100.0 * (tables_with_desc + columns_with_desc + relations_with_desc) as f32/(total_tables + total_columns + total_relations) as f32).floor().to_string()+"%").size(16.5));
-                            ui.end_row();
-                        });
-                });
-
-                ui.separator();
 
                 CollapsingHeader::new(RichText::new("Selected Object").strong().size(20.0)).default_open(true).show(ui, |ui| {
                     ui.separator();
@@ -1198,6 +1151,12 @@ impl TemplateApp {
 
                                         ui.label(RichText::new("Name").strong().size(16.5));
                                         ui.label(RichText::new(&r.name).size(16.5));
+                                        ui.end_row();
+
+                                        let first_table = self.tables[r.tables[0]].columns[r.columns[0]].name.clone();
+                                        let second_table = self.tables[r.tables[1]].columns[r.columns[1]].name.clone();
+                                        ui.label(RichText::new("Columns").strong().size(16.5));
+                                        ui.label(RichText::new(first_table + " -> " + &second_table).size(16.5));
                                         ui.end_row();
                                     });
 
