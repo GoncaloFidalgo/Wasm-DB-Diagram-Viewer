@@ -234,9 +234,12 @@ class DiagramViewer extends Page
                                         Action::make('export_png')
                                             ->label('Exportar como PNG')
                                             ->icon('heroicon-m-photo')
-                                            ->action(fn() => $this->dispatch('trigger-export-png')), // Dispara evento para o JS
+                                            ->action(fn() => $this->dispatch('trigger-export-png')),
 
-
+                                        Action::make('export_txt')
+                                            ->label('Exportar como TXT')
+                                            ->icon('heroicon-m-document-text')
+                                            ->action(fn() => $this->dispatch('trigger-export-txt', name: $this->diagramName)),
                                     ])
                                         ->label('Exportar')
                                         ->icon('heroicon-m-arrow-down-tray')
@@ -385,15 +388,13 @@ class DiagramViewer extends Page
         $oldRelations = $currentDiagram['relations'] ?? [];
 
         $newTablesList = [];
-        $indexMapping = [];
 
         $extractedTablesMap = [];
         foreach ($this->fullExtractedData as $extractedTable) {
             $extractedTablesMap[$extractedTable['name']] = $extractedTable;
         }
-        foreach ($oldTables as $oldIndex => $table) {
+        foreach ($oldTables as $table) {
             if (in_array($table['name'], $selectedTableNames)) {
-                $newIndex = count($newTablesList);
 
                 if (isset($extractedTablesMap[$table['name']])) {
                     $freshColumns = $extractedTablesMap[$table['name']]['columns'];
@@ -418,9 +419,6 @@ class DiagramViewer extends Page
                 }
 
                 $newTablesList[] = $table;
-                $indexMapping[$oldIndex] = $newIndex;
-            } else {
-                $indexMapping[$oldIndex] = null; // Tabela foi apagada
             }
         }
 

@@ -9,12 +9,6 @@ mod wasm {
     use wasm_bindgen::{self, prelude::*};
     use std::sync::{Arc, Mutex};
 
-    #[wasm_bindgen(js_namespace = window)]
-    extern "C" {
-        fn saveDiagramState(json_data: &str);
-        fn openSyncModal(json_data: &str);
-    }
-
     #[wasm_bindgen]
     pub struct WebHandle {
         runner: eframe::WebRunner,
@@ -25,6 +19,7 @@ mod wasm {
         export_trigger: Arc<Mutex<bool>>,
         sync_trigger: Arc<Mutex<bool>>,
         egui_ctx: Arc<Mutex<Option<egui::Context>>>,
+        txt_export_trigger: Arc<Mutex<bool>>,
     }
 
     #[wasm_bindgen]
@@ -40,6 +35,7 @@ mod wasm {
                 export_trigger: Arc::new(Mutex::new(false)),
                 sync_trigger: Arc::new(Mutex::new(false)),
                 egui_ctx: Arc::new(Mutex::new(None)),
+                txt_export_trigger: Arc::new(Mutex::new(false)),
             }
         }
         #[wasm_bindgen]
@@ -47,11 +43,21 @@ mod wasm {
             if let Ok(mut flag) = self.save_trigger.lock() {
                 *flag = true;
             }
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
+            }
         }
         #[wasm_bindgen]
         pub fn trigger_export(&self) {
             if let Ok(mut flag) = self.export_trigger.lock() {
                 *flag = true;
+            }
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
             }
         }
         #[wasm_bindgen]
@@ -59,8 +65,23 @@ mod wasm {
             if let Ok(mut flag) = self.sync_trigger.lock() {
                 *flag = true;
             }
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
+            }
         }
-
+        #[wasm_bindgen]
+        pub fn trigger_txt_export(&self) {
+            if let Ok(mut flag) = self.txt_export_trigger.lock() {
+                *flag = true;
+            }
+            if let Ok(ctx_lock) = self.egui_ctx.lock() {
+                if let Some(ctx) = ctx_lock.as_ref() {
+                    ctx.request_repaint();
+                }
+            }
+        }
         #[wasm_bindgen]
         pub async fn start(&self, canvas: web_sys::HtmlCanvasElement, read_only: bool) -> Result<(), wasm_bindgen::JsValue> {
             eframe::WebLogger::init(log::LevelFilter::Debug).ok();
@@ -72,6 +93,7 @@ mod wasm {
             let save_trigger_clone = Arc::clone(&self.save_trigger);
             let export_trigger_clone = Arc::clone(&self.export_trigger);
             let sync_trigger_clone = Arc::clone(&self.sync_trigger);
+            let txt_export_trigger_clone = Arc::clone(&self.txt_export_trigger);
 
             let update_json_clone = Arc::clone(&self.update_json);
             let ctx_clone = Arc::clone(&self.egui_ctx);
@@ -96,6 +118,7 @@ mod wasm {
                             update_read_only_clone,
                             export_trigger_clone,
                             sync_trigger_clone,
+                            txt_export_trigger_clone,
                         )))
                     }),
                 )
