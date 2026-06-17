@@ -77,9 +77,10 @@ pub enum CardinalityDisplay {
 }
 #[derive(PartialEq, Clone, Copy)]
 pub enum DescriptionIndicator {
-    None,
+    All,
     Missing,
     Existing,
+    None,
 }
 #[derive(PartialEq)]
 pub enum Selected {
@@ -339,7 +340,7 @@ impl Default for TemplateApp {
             },
             options_menu: OptionsMenu {
                 cardinality_display: CardinalityDisplay::SelectedOnly,
-                description_indicator: DescriptionIndicator::None,
+                description_indicator: DescriptionIndicator::All,
                 search_table: String::new(),
             },
             scene_transform: TSTransform::IDENTITY,
@@ -625,12 +626,19 @@ impl Table {
             DescriptionIndicator::None => {}
             DescriptionIndicator::Missing => {
                 if self.description.is_empty() {
-                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::RED);
+                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::DARK_RED);
                 }
             }
             DescriptionIndicator::Existing => {
                 if !self.description.is_empty() {
-                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::RED);
+                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::GREEN);
+                }
+            }
+            DescriptionIndicator::All => {
+                if self.description.is_empty() {
+                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::DARK_RED);
+                } else {
+                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::GREEN);
                 }
             }
         }
@@ -716,12 +724,19 @@ impl Column {
             DescriptionIndicator::None => {}
             DescriptionIndicator::Missing => {
                 if self.description.is_empty() {
-                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::RED);
+                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::DARK_RED);
                 }
             }
             DescriptionIndicator::Existing => {
                 if !self.description.is_empty() {
-                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::RED);
+                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::GREEN);
+                }
+            }
+            DescriptionIndicator::All => {
+                if self.description.is_empty() {
+                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::DARK_RED);
+                } else {
+                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::GREEN);
                 }
             }
         }
@@ -944,47 +959,34 @@ impl TemplateApp {
             .default_size(vec2(300.0, 400.0))
             .min_width(250.0)
             .show(ctx, |ui| {
-                ui.collapsing(RichText::new("Diagram Options").strong().size(30.0), |ui| {
-                    ui.label(RichText::new("Cardinality Display").strong().size(15.0));
+                ui.collapsing(RichText::new("Diagram Options").strong().size(20.0), |ui| {
+                    ui.add_space(10.0);
+
+                    ui.label(RichText::new("Cardinality Display").strong().size(16.5));
+                    ui.add_space(5.0);
                     ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(40.0, 0.0);
                         ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Always, "Always");
                         ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::SelectedOnly, "SelectedOnly");
                         ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Never, "Never");
                     });
 
-                    ui.label(RichText::new("Description Indicator").strong().size(15.0));
+                    ui.add_space(20.0);
+
+                    ui.label(RichText::new("Description Indicator").strong().size(16.5));
+                    ui.add_space(5.0);
                     ui.horizontal(|ui| {
-                        ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
+                        ui.spacing_mut().item_spacing = vec2(30.0, 0.0);
+                        ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::All, "All");
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Missing, "Missing");
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Existing, "Existing");
+                        ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
                     });
 
-                    if !self.read_only {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Undo Redo").strong().size(15.0));
-                            ui.label(RichText::new("(CTRL + Z/CTRL + Y)").size(10.0));
-                        });
-                        let can_undo = self.undoer.has_undo(&self.app_state);
-                        let can_redo = self.undoer.has_redo(&self.app_state);
-                        ui.horizontal(|ui| {
-                            let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
-                            let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
-
-                            if undo && let Some(undo_text) = self.undoer.undo(&self.app_state) {
-                                self.app_state = undo_text.clone();
-                            }
-                            if redo && let Some(redo_text) = self.undoer.redo(&self.app_state) {
-                                self.app_state = redo_text.clone();
-                            }
-                            if undo || redo {
-                                self.tables = self.app_state.tables.clone();
-                                self.relations = self.app_state.relations.clone();
-                            }
-                        });
-                    }
+                    ui.add_space(20.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Search Table").strong().size(15.0));
+                        ui.label(RichText::new("Search Table").strong().size(16.5));
                         ui.label(RichText::new("(Case Sensitive)").size(10.0));
                     });
                     ui.horizontal(|ui| {
@@ -1004,7 +1006,7 @@ impl TemplateApp {
 
                 ui.separator();
                 
-                ui.collapsing(RichText::new("Statistics").strong().size(30.0), |ui| {
+                ui.collapsing(RichText::new("Statistics").strong().size(20.0), |ui| {
                     let total_tables = self.tables.len();
                     let total_relations = self.relations.len();
                     let mut total_columns = 0;
@@ -1068,7 +1070,7 @@ impl TemplateApp {
 
                 ui.separator();
 
-                CollapsingHeader::new(RichText::new("Selected Object").strong().size(30.0)).default_open(true).show(ui, |ui| {
+                CollapsingHeader::new(RichText::new("Selected Object").strong().size(20.0)).default_open(true).show(ui, |ui| {
                     ui.separator();
                     if let Some(selected) = self.selected.last() {
                         match selected {
