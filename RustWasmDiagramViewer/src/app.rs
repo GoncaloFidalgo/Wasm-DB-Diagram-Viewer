@@ -924,27 +924,29 @@ impl TemplateApp {
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Existing, "Existing");
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Undo Redo").strong().size(15.0));
-                        ui.label(RichText::new("(CTRL + Z/CTRL + Y)").size(10.0));
-                    });
-                    let can_undo = self.undoer.has_undo(&self.app_state);
-                    let can_redo = self.undoer.has_redo(&self.app_state);
-                    ui.horizontal(|ui| {
-                        let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
-                        let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
+                    if !self.read_only {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Undo Redo").strong().size(15.0));
+                            ui.label(RichText::new("(CTRL + Z/CTRL + Y)").size(10.0));
+                        });
+                        let can_undo = self.undoer.has_undo(&self.app_state);
+                        let can_redo = self.undoer.has_redo(&self.app_state);
+                        ui.horizontal(|ui| {
+                            let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
+                            let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
 
-                        if (undo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)})) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
-                            self.app_state = undo_text.clone();
-                        }
-                        if (redo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)})) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
-                            self.app_state = redo_text.clone();
-                        }
-                        if undo || redo {
-                            self.tables = self.app_state.tables.clone();
-                            self.relations = self.app_state.relations.clone();
-                        }
-                    });
+                            if undo && let Some(undo_text) = self.undoer.undo(&self.app_state) {
+                                self.app_state = undo_text.clone();
+                            }
+                            if redo && let Some(redo_text) = self.undoer.redo(&self.app_state) {
+                                self.app_state = redo_text.clone();
+                            }
+                            if undo || redo {
+                                self.tables = self.app_state.tables.clone();
+                                self.relations = self.app_state.relations.clone();
+                            }
+                        });
+                    }
 
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Search Table").strong().size(15.0));
