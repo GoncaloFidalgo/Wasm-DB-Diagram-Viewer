@@ -10,8 +10,10 @@ use App\Models\Diagram;
 use App\Services\DatabaseExtractorService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Flex;
@@ -23,6 +25,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\Width;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
 use Livewire\Attributes\On;
 
@@ -111,6 +114,50 @@ class DiagramViewer extends Page
                                     ->hiddenLabel()
                                     ->disabled()
                                     ->suffixActions([
+                                        Action::make('info')
+                                            ->icon('heroicon-m-information-circle')
+                                            ->color('gray')
+                                            ->tooltip('Detalhes do Diagrama')
+                                            ->modalHeading('Detalhes do diagrama')
+                                            ->modalWidth('sm')
+                                            ->modalSubmitAction(false)
+                                            ->modalCancelAction(false)
+                                            ->schema([
+                                                TextEntry::make('created_at')
+                                                    ->label('Data de criação')
+                                                    ->inlineLabel()
+                                                    ->extraAttributes(['style' => 'white-space: nowrap; min-width: max-content;'])
+                                                    ->state(function () {
+                                                        $min = Diagram::where('diagram_id', $this->diagramId)->min('created_at');
+                                                        return $min
+                                                            ? Carbon::parse($min)->timezone('Europe/Lisbon')->format('d/m/Y - H:i')
+                                                            : 'Desconhecida';
+                                                    }),
+
+                                                TextEntry::make('published_count')
+                                                    ->label('Total de publicações')
+                                                    ->inlineLabel()
+                                                    ->extraAttributes(['style' => 'white-space: nowrap; min-width: max-content;'])
+                                                    ->state(function () {
+                                                        $count = Diagram::where('diagram_id', $this->diagramId)
+                                                            ->where('is_published', 'true')
+                                                            ->count();
+                                                        return $count . ' ' . ($count === 1 ? 'versão' : 'versões');
+                                                    }),
+
+                                                TextEntry::make('last_published_at')
+                                                    ->label('Data da última publicação')
+                                                    ->inlineLabel()
+                                                    ->extraAttributes(['style' => 'white-space: nowrap; min-width: max-content;'])
+                                                    ->state(function () {
+                                                        $max = Diagram::where('diagram_id', $this->diagramId)
+                                                            ->where('is_published', 'true')
+                                                            ->max('published_at');
+                                                        return $max
+                                                            ? Carbon::parse($max)->timezone('Europe/Lisbon')->format('d/m/Y - H:i')
+                                                            : 'Nenhuma';
+                                                    }),
+                                            ]),
                                         EditDiagramMetadataAction::configure(
                                             Action::make('edit_metadata')->visible(fn() => !$this->isPublished)
                                         ),
@@ -146,7 +193,7 @@ class DiagramViewer extends Page
                                         }
 
                                         return $query->get()->mapWithKeys(function ($d) {
-                                            $dateString = $d->published_at ? ' (' . $d->published_at->format('d/m/Y - H:i') . ')' : '';
+                                            $dateString = $d->published_at ? ' (' . $d->published_at->timezone('Europe/Lisbon')->format('d/m/Y - H:i') . ')' : '';
                                             $label = 'Publicação ' . $d->version . $dateString;
                                             if (!$d->is_published) $label = 'Editável';
                                             //if ($d->id === $this->recordId) $label .= ' - Atual';
