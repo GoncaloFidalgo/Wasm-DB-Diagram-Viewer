@@ -14,22 +14,31 @@ class PublishDiagramAction
     public static function make(): Action
     {
         return Action::make('publish')
-            ->label(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'Definições de Partilha' : 'Publicar')
-            ->icon(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'heroicon-m-cog-8-tooth' : 'heroicon-m-share')
-           //->color(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'info' : 'success')
+            //->label(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'Definições de Partilha' : 'Partilhar diagrama')
+            ->label('Definições de Partilha')
+            //->icon(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'heroicon-m-cog-8-tooth' : 'heroicon-m-share')
+            ->icon('heroicon-m-share')
 
-            ->modalHeading(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'Definições de Partilha' : 'Publicar Diagrama')
+//            ->modalHeading(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'Definições de Partilha' : 'Partilhar Diagrama')
+            ->modalHeading('Definições de Partilha')
             ->modalDescription('Define quem pode visualizar este diagrama e as suas versões.')
-            ->modalSubmitActionLabel(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'Guardar' : 'Publicar')
+            //->modalSubmitActionLabel(fn ($record, $livewire) => self::getDiagram($record, $livewire)?->is_published ? 'Guardar' : 'Partilhar')
+            ->modalSubmitActionLabel('Guardar')
             ->modalCancelActionLabel('Cancelar')
             ->modalWidth('md')
+            ->visible(function ($record, $livewire) {
+                $mainDiagram = self::getMainDiagram($record, $livewire);
 
+                $isOwner = auth()->check() && auth()->id() === $mainDiagram?->user_id;
+
+                return $mainDiagram && $mainDiagram->is_published && $isOwner;
+            })
             // Preenchemos o formulário com os dados da base de dados e geramos o link real
             ->fillForm(function ($record, $livewire) {
-                $diagram = self::getDiagram($record, $livewire);
+                $mainDiagram = self::getMainDiagram($record, $livewire);
                 return [
-                    'visibility' => $diagram?->visibility ?? 'link',
-                    'share_link' => url('/diagram/' . $diagram?->diagram_id), // Gera o link completo
+                    'visibility' => $mainDiagram?->visibility ?? 'private',
+                    'share_link' => url('/diagram/' . $mainDiagram?->diagram_id),
                 ];
             })
             ->schema([
@@ -37,12 +46,12 @@ class PublishDiagramAction
                     ->label('Visibilidade Geral')
                     ->options([
                         'public' => 'Público',
-                        'link' => 'Apenas com o link',
+                        //'link' => 'Apenas com o link',
                         'private' => 'Privado',
                     ])
                     ->descriptions([
                         'public' => 'Qualquer utilizador pode encontrar e visualizar.',
-                        'link' => 'Apenas utilizadores com o link direto podem visualizar.',
+                        //'link' => 'Apenas utilizadores com o link direto podem visualizar.',
                         'private' => 'Ninguém além de ti pode ver este diagrama.',
                     ])
                     ->required()
@@ -68,49 +77,36 @@ class PublishDiagramAction
                     ),
             ])
             ->action(function (array $data, $record, $livewire) {
-                $diagram = self::getDiagram($record, $livewire);
-                $isNewlyPublished = false;
-                if ($diagram) {
-                    // Aplica a visibilidade a todas as versões deste diagrama (mesmo diagram_id)
-                    Diagram::where('diagram_id', $diagram->diagram_id)->update([
+                $mainDiagram = self::getMainDiagram($record, $livewire);
+
+                if ($mainDiagram) {
+                    // Aplica a visibilidade a TODAS as versões deste diagrama
+                    Diagram::where('diagram_id', $mainDiagram->diagram_id)->update([
                         'visibility' => $data['visibility'],
                     ]);
-
-                    // Se a versão que estamos a mexer ainda NÃO for publicada, publicamos e bloqueamos a edição
-                    if (!$diagram->is_published) {
-                        $diagram->update(['is_published' => true]);
-                        $isNewlyPublished = true;
-                    }
                 }
 
                 Notification::make()
-                    ->title(self::getDiagram($record, $livewire)?->is_published ? 'Definições guardadas' : 'Diagrama publicado com sucesso')
+                    ->title('Definições guardadas com sucesso!')
                     ->success()
                     ->send();
-
-                if (isset($livewire->recordId)) {
-                    $livewire->isPublished = true;
-
-                    if ($isNewlyPublished && $diagram) {
-                        $livewire->dispatch('reload-wasm-schema',
-                            schema: json_encode($diagram->diagram),
-                            isReadOnly: true,
-                            hasUnsavedChanges: false
-                        );
-                    }
-                }
             });
     }
 
-    // Helper interno blindado para apanhar o Diagrama, venha ele da Tabela ou do Visualizador Livewire
-    private static function getDiagram($record, $livewire): ?Diagram
+    private static function getMainDiagram($record, $livewire): ?Diagram
     {
+        $currentDiagram = null;
+
         if ($record instanceof Diagram) {
-            return $record;
+            $currentDiagram = $record;
+        } elseif (isset($livewire->recordId)) {
+            $currentDiagram = Diagram::find($livewire->recordId);
         }
-        if (isset($livewire->recordId)) {
-            return Diagram::find($livewire->recordId);
-        }
-        return null;
+
+        if (!$currentDiagram) return null;
+
+        return Diagram::where('diagram_id', $currentDiagram->diagram_id)
+            ->where('version', 1)
+            ->first();
     }
 }
