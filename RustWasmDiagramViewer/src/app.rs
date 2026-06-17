@@ -1813,6 +1813,8 @@ impl eframe::App for TemplateApp {
                     new_app.txt_export_trigger = self.txt_export_trigger.clone();
                     new_app.read_only = self.read_only;
                     new_app.apply_auto_layout();
+                    new_app.undoer = Undoer::default();
+                    new_app.app_state = AppState { tables: new_app.tables.clone(), relations: new_app.relations.clone() };
 
                     // Substitui a aplicação inteira para aplicar o novo estado do diagrama
                     *self = new_app;
