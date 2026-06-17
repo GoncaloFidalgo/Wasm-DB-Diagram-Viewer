@@ -901,6 +901,41 @@ impl TemplateApp {
                         }
                     });
             });
+
+        if !self.read_only {
+            Area::new(Id::new("UndoRedo_buttons"))
+                .anchor(Align2::CENTER_TOP, vec2(180.0, 20.0))
+                .order(Order::Foreground)
+                .show(ctx, |ui| {
+                    Frame::default()
+                        .fill(Color32::WHITE)
+                        .stroke(Stroke::new(1.0, Color32::BLACK))
+                        .corner_radius(5.0)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+
+                            ui.visuals_mut().override_text_color = Some(Color32::BLACK);
+
+                            let can_undo = self.undoer.has_undo(&self.app_state);
+                            let can_redo = self.undoer.has_redo(&self.app_state);
+                            ui.horizontal(|ui| {
+                                let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
+                                let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
+
+                                if undo && let Some(undo_text) = self.undoer.undo(&self.app_state) {
+                                    self.app_state = undo_text.clone();
+                                }
+                                if redo && let Some(redo_text) = self.undoer.redo(&self.app_state) {
+                                    self.app_state = redo_text.clone();
+                                }
+                                if undo || redo {
+                                    self.tables = self.app_state.tables.clone();
+                                    self.relations = self.app_state.relations.clone();
+                                }
+                            });
+                        });
+                });
+        }
     }
 
     fn draw_edit_window(&mut self, ctx: &Context, screen_rect: Rect) {
