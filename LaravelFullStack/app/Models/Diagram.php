@@ -12,6 +12,8 @@ class Diagram extends Model
     // Passar o JSONB para array
     protected $casts = [
         'diagram' => 'array',
+        'is_published' => 'boolean',
+        'published_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

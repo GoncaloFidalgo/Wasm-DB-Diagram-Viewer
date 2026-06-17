@@ -7,6 +7,7 @@
         display: none !important;
     }
     .fi-sc.fi-sc-has-gap {
+        /*gap: 0 !important;*/
         gap: calc(var(--spacing)) !important;
     }
     .fi-main {

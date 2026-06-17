@@ -114,6 +114,12 @@ class DiagramViewer extends Page
                                         EditDiagramMetadataAction::configure(
                                             Action::make('edit_metadata')->visible(fn() => !$this->isPublished)
                                         ),
+                                        Action::make('is_readonly')
+                                            ->icon('heroicon-m-lock-closed')
+                                            ->color('warning')
+                                            ->disabled()
+                                            ->tooltip('Versão publicada (Apenas leitura)')
+                                            ->visible(fn() => $this->isPublished),
                                     ]),
                             ])->alignStart()->grow(false),
 
@@ -124,7 +130,7 @@ class DiagramViewer extends Page
                                     ->live()
                                     ->selectablePlaceholder(false)
                                     ->extraAttributes([
-                                        'style' => 'max-width: 200px; width: 100%;'
+                                        'style' => 'max-width: 130px; width: 100%;'
                                     ])
                                     ->extraInputAttributes([
                                         'x-data' => '{ previousValue: null }',
@@ -140,8 +146,9 @@ class DiagramViewer extends Page
                                         }
 
                                         return $query->get()->mapWithKeys(function ($d) {
-                                            $label = 'Publicação ' . $d->version;
-                                            if (!$d->is_published) $label = 'Atual';
+                                            $dateString = $d->published_at ? ' (' . $d->published_at->format('d/m/Y - H:i') . ')' : '';
+                                            $label = 'Publicação ' . $d->version . $dateString;
+                                            if (!$d->is_published) $label = 'Editável';
                                             //if ($d->id === $this->recordId) $label .= ' - Atual';
                                             return [$d->id => $label];
                                         });
@@ -245,9 +252,38 @@ class DiagramViewer extends Page
                                         ])
                                         ->visible(fn() => !$this->isPublished),
 
-                                    PublishDiagramAction::make()
-                                        ->visible(fn() => $this->isOwner),
+                                    PublishDiagramAction::make(),
 
+                                    Action::make('publish_version')
+                                        ->label('Publicar Versão')
+                                        ->icon('heroicon-m-check-badge')
+                                        ->color('success')
+                                        ->visible(fn() => $this->isOwner && !$this->isPublished)
+                                        ->requiresConfirmation()
+                                        ->modalHeading('Publicar esta versão?')
+                                        ->modalDescription('Ao publicar, esta versão ficará trancada (apenas leitura) e visível para quem tiver acesso ao diagrama.')
+                                        ->modalSubmitActionLabel('Sim, publicar')
+                                        ->action(function () {
+                                            // 1. Marca a versão atual como publicada na BD
+                                            Diagram::where('id', $this->recordId)->update([
+                                                'is_published' => true,
+                                                'published_at' => now(),
+                                                'visibility' => 'private'
+                                            ]);
+
+                                            // 2. Atualiza o estado do Livewire
+                                            $this->isPublished = true;
+
+
+                                            // 3. Informa o Rust para bloquear a edição na hora (Read-Only)
+                                            $this->dispatch('reload-wasm-schema',
+                                                schema: $this->schemaJson,
+                                                isReadOnly: true,
+                                                hasUnsavedChanges: false
+                                            );
+
+                                            Notification::make()->title('Versão publicada e trancada!')->success()->send();
+                                        }),
                                 ])->alignEnd(),
                             ])
                                 ->alignEnd()
