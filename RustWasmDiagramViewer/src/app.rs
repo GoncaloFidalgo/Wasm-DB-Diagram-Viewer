@@ -1,4 +1,4 @@
-use egui::*;
+use egui::{util::undoer::Undoer, *};
 use emath::*;
 use std::sync::{Arc, Mutex};
 
@@ -45,7 +45,21 @@ pub struct TemplateApp {
     pub exporting: bool,
     #[serde(skip)]
     pub sync_trigger: Arc<Mutex<bool>>,
+    #[serde(skip)]
+    pub undoer: Undoer<AppState>,
+    #[serde(skip)]
+    pub app_state: AppState,
     pub scene_transform: TSTransform,
+}
+#[derive(PartialEq, Clone)]
+pub struct AppState {
+    pub tables: Vec<Table>,
+    pub relations: Vec<Relation>,
+}
+#[derive(PartialEq)]
+pub enum Teste {
+    Um,
+    Dois
 }
 #[derive(PartialEq)]
 pub enum Selected {
@@ -298,11 +312,16 @@ impl Default for TemplateApp {
             export_trigger: Arc::new(Mutex::new(false)),
             exporting: false,
             sync_trigger: Arc::new(Mutex::new(false)),
+            undoer: Undoer::default(),
+            app_state: AppState {
+                tables: Vec::new(),
+                relations: Vec::new(),
+            },
             scene_transform: TSTransform::IDENTITY,
         }
     }
 }
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize, Default, PartialEq, Clone)]
 #[serde(default)]
 pub struct Table {
     pub name: String,
@@ -310,7 +329,7 @@ pub struct Table {
     pub columns: Vec<Column>,
     pub description: String,
 }
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize, Default, PartialEq, Clone)]
 #[serde(default)]
 pub struct Column {
     pub name: String,
@@ -321,7 +340,7 @@ pub struct Column {
     pub key_type: String,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize, Default, PartialEq, Clone)]
 #[serde(default)]
 pub struct Relation {
     pub name: String,
@@ -718,6 +737,8 @@ impl TemplateApp {
                     app_state.update_read_only = update_read_only.clone();
                     app_state.export_trigger = export_trigger_clone.clone();
                     app_state.sync_trigger = sync_trigger_clone.clone();
+                    app_state.undoer = Undoer::default();
+                    app_state.app_state = AppState { tables: app_state.tables.clone(), relations: app_state.relations.clone() };
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -728,6 +749,8 @@ impl TemplateApp {
         app.save_trigger = save_trigger_clone;
         app.export_trigger = export_trigger_clone;
         app.sync_trigger = sync_trigger_clone;
+        app.undoer = Undoer::default();
+        app.app_state = AppState { tables: app.tables.clone(), relations: app.relations.clone() };
         app
     }
 
@@ -814,12 +837,52 @@ impl TemplateApp {
             });
     }
 
-    fn draw_edit_window(&mut self, ctx: &Context) {
-        Window::new("Details")
+    fn draw_edit_window(&mut self, ctx: &Context, abc: &mut Teste) {
+        Window::new("Inspector")
             .order(Order::Tooltip)
-            .default_size(vec2(320.0, 350.0))
-            .min_height(150.0)
+            .default_size(vec2(300.0, 400.0))
+            .min_width(250.0)
             .show(ctx, |ui| {
+                ui.label(RichText::new("Diagram Options:").strong().size(30.0));
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.radio_value(abc, Teste::Um, "First");
+                    ui.radio_value(abc, Teste::Dois, "Second");
+                    ui.radio_value(abc, Teste::Dois, "Third");
+                });
+
+                let can_undo = self.undoer.has_undo(&self.app_state);
+                let can_redo = self.undoer.has_redo(&self.app_state);
+                ui.horizontal(|ui| {
+                    let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
+                    let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
+
+                    let mut state_changed = false;
+                    if (undo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)})) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
+                        self.app_state = undo_text.clone();
+                        state_changed = true;
+                    }
+                    if (redo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)})) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
+                        self.app_state = redo_text.clone();
+                        state_changed = true;
+                    }
+                    if state_changed {
+                        self.tables = self.app_state.tables.clone();
+                        self.relations = self.app_state.relations.clone();
+                    }
+                });
+                self.undoer.feed_state(ui.input(|input| input.time), &self.app_state);
+
+                ui.label(RichText::new("Coisa1").size(10.0));
+                ui.label(RichText::new("Coisa1").size(10.0));
+                ui.separator();
+                ui.label(RichText::new("Statistics:").strong().size(30.0));
+                ui.separator();
+                ui.label(RichText::new("Coisa1").size(10.0));
+                ui.label(RichText::new("Coisa1").size(10.0));
+                ui.separator();
+                ui.label(RichText::new("Selected Object:").strong().size(30.0));
+                ui.separator();
                 if let Some(selected) = self.selected.last() {
                     match selected {
                         Selected::Table { table, column } => {
@@ -983,8 +1046,8 @@ impl TemplateApp {
         let notation_size: f32 = NOTATION_SIZE * scene_transform.scaling;
         let interact_hitbox_size: f32 = 14.0 * scene_transform.scaling;
 
+        let mut diagram_interacted = false;
         let mut delta_used = Vec2::ZERO;
-
         let mut drag_stopped = false;
 
         for (rela_idx, relation) in self.relations.iter_mut().enumerate() {
@@ -998,11 +1061,16 @@ impl TemplateApp {
                     .order(Order::Middle)
                     .default_size(ui.clip_rect().size())
                     .show(ui.ctx(), |ui| {
-                        draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation);
+                        draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted);
                     });
             } else {
-                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation);
+                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted);
             }
+        }
+
+        if diagram_interacted {
+            self.app_state.tables = self.tables.clone();
+            self.app_state.relations = self.relations.clone();
         }
 
         if delta_used != Vec2::ZERO {
@@ -1010,7 +1078,7 @@ impl TemplateApp {
         }
 
         if drag_stopped {
-            use_verify_in_selected(ui.ctx(), &mut self.selected, &mut self.relations);
+            use_verify_in_selected(ui.ctx(), &mut self.selected, &mut self.relations, &self.tables, &mut self.app_state);
         }
 
         for (table_idx, table) in self.tables.iter().enumerate() {
@@ -1026,7 +1094,7 @@ impl TemplateApp {
     }
 }
 
-fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation) {
+fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation, diagram_interacted: &mut bool) {
     let mut highlight_relation = false;
     for select in selected.iter() {
         match select {
@@ -1213,11 +1281,14 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         if !ui.input(|i| {i.modifiers.command_only()}) || read_only {selected.clear();}
         toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
     }
+    if rel_first_response.hovered() || rel_second_response.hovered() {
+        ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+    }
     let popup_first_id = Id::new(("popup", rela_idx, "first"));
     let popup_second_id = Id::new(("popup", rela_idx, "second"));
     if !read_only {
-        popup_relation_create(&rel_first_response, popup_first_id, relation, selected);
-        popup_relation_create(&rel_second_response, popup_second_id, relation, selected);
+        popup_relation_create(&rel_first_response, popup_first_id, relation, selected, diagram_interacted);
+        popup_relation_create(&rel_second_response, popup_second_id, relation, selected, diagram_interacted);
         if rel_first_response.drag_started() || rel_second_response.drag_started() {
             let item_rela = Selected::Relation { relation: rela_idx, segment: None };
             if !selected.contains(&item_rela) {
@@ -1227,9 +1298,6 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 toggle_selected(selected, item_rela, relation.relation_segments.len(),read_only);
                 toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: None }, relation.relation_segments.len(), read_only);
             }
-        }
-        if rel_first_response.hovered() || rel_second_response.hovered() {
-            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
         }
         if rel_first_response.dragged() || rel_second_response.dragged() {
             Popup::close_all(ui.ctx());
@@ -1254,6 +1322,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
             relation.relation_segments.insert(0, mid);
             relation.relation_segments.insert(1, next);
             Popup::open_id(ui.ctx(), popup_first_id);
+            *diagram_interacted = true;
         }
         if rel_second_response.secondary_clicked() {
             selected.clear();
@@ -1274,6 +1343,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 relation.relation_segments.push(mid);
             }
             Popup::open_id(ui.ctx(), popup_second_id);
+            *diagram_interacted = true;
         }
     }
 
@@ -1303,9 +1373,11 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 toggle_selected(selected, Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }, relation.relation_segments.len(), read_only);
             }
         }
-        
+        if seg_response.hovered() {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+        }
         if !read_only {
-            popup_relation_create(&seg_response, popup_id, relation, selected);
+            popup_relation_create(&seg_response, popup_id, relation, selected, diagram_interacted);
 
             if seg_response.drag_started() {
                 let item_seg = Selected::Relation { relation: rela_idx, segment: Some(seg_idx) };
@@ -1321,9 +1393,6 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
 
             if selected.contains(&Selected::Relation { relation: rela_idx, segment: Some(seg_idx) }) {
                 painter.rect_filled(visual_rect, CornerRadius::ZERO, Color32::BLUE);
-            }
-            if seg_response.hovered() {
-                ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
             }
 
             // --- Mudanças de estado (Start / End Drag / Right Click) ---
@@ -1355,6 +1424,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 }
                 relation.relation_segments.insert(seg_idx + 1, mid);
                 relation.relation_segments.insert(seg_idx + 2, next);
+                *diagram_interacted = true;
             }
 
             let (start, end) = (scene_transform.inverse().mul_pos(pts[0]), scene_transform.inverse().mul_pos(pts[last_idx]));
@@ -1369,7 +1439,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 let pt_response = ui.interact(pt_rect, pt_id, Sense::click_and_drag());
                 let pt_popup_id = Id::new(("popup_pt", rela_idx, seg_idx));
 
-                popup_relation_create(&pt_response, pt_popup_id, relation, selected);
+                popup_relation_create(&pt_response, pt_popup_id, relation, selected, diagram_interacted);
 
                 if pt_response.drag_started() || pt_response.secondary_clicked() || pt_response.drag_stopped() {
                     let pt_real_center = scene_transform.inverse().mul_pos(pt_rect.center());
@@ -1398,11 +1468,13 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                     relation.relation_segments.remove(seg_idx);
                     relation.relation_segments.remove(seg_idx - 1);
                     Popup::open_id(ui.ctx(), popup_second_id);
+                    *diagram_interacted = true;
                 }
 
                 if pt_response.drag_stopped() {
                     verify_line_segment_joins(&mut relation.relation_segments, seg_idx, start.y, end.y, selected, rela_idx);
                     verify_line_segment_joins(&mut relation.relation_segments, seg_idx - 1, start.y, end.y, selected, rela_idx);
+                    *diagram_interacted = true;
                 }
             }
         }
@@ -1450,11 +1522,12 @@ fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line
     }
 }
 
-fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, selected: &mut Vec<Selected>) {
+fn popup_relation_create(seg_response: &Response, popup_id: Id, relation: &mut Relation, selected: &mut Vec<Selected>, diagram_interacted: &mut bool) {
     Popup::menu(seg_response).id(popup_id).show(|ui| {
         if ui.button("⟳ Reset").clicked() {
             relation.relation_segments.clear();
             selected.clear();
+            *diagram_interacted = true;
         }
     });
 }
@@ -1702,7 +1775,7 @@ impl eframe::App for TemplateApp {
                     .register_pan_and_zoom(ui, &mut bg_response, &mut self.scene_transform);
 
                 // Criar window de edição no ecra
-                self.draw_edit_window(ctx);
+                self.draw_edit_window(ctx, &mut Teste::Um);
 
                 // Controlar zoom com uma barra superior horizontal
                 self.draw_zoom_area(ctx, ui, bg_response);
@@ -1728,7 +1801,7 @@ impl eframe::App for TemplateApp {
             }
 
             if let Some(drag_stopped_on) = drag_stopped_on {
-                drag_stopped_on_table(drag_stopped_on, ctx, &mut self.selected, &mut self.relations, &mut self.tables);
+                drag_stopped_on_table(drag_stopped_on, ctx, &mut self.selected, &mut self.relations, &mut self.tables, &mut self.app_state);
             }
 
             // Desenhar as linhas das relações
@@ -1798,7 +1871,7 @@ fn center_screen(ctx: &Context, screen_rect: Rect, scene_transform: &mut TSTrans
     }
 }
 
-fn drag_stopped_on_table(table_idx: usize, ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, tables: &mut Vec<Table>) {
+fn drag_stopped_on_table(table_idx: usize, ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, tables: &mut Vec<Table>, app_state: &mut AppState) {
     let mut table_adjusted = false;
     for relation in relations.iter_mut() {
         if table_adjusted == false && relation.tables[0] == table_idx || relation.tables[1] == table_idx {
@@ -1893,7 +1966,7 @@ fn drag_stopped_on_table(table_idx: usize, ctx: &Context, selected: &mut Vec<Sel
         }
     }
     
-    use_verify_in_selected(ctx, selected, relations);
+    use_verify_in_selected(ctx, selected, relations, tables, app_state);
 }
 
 fn move_all_selected(delta: Vec2, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, tables: &mut Vec<Table>) {
@@ -1928,7 +2001,7 @@ fn move_all_selected(delta: Vec2, selected: &mut Vec<Selected>, relations: &mut 
     }
 }
 
-fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>) {
+fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations: &mut Vec<Relation>, tables: &Vec<Table>, app_state: &mut AppState) {
     let mut relation_segments_drag_stopped_to_verify: Vec<[usize; 3]> = Vec::new();//relationID/fullRelationBinary/segmentID
     for selected in selected.iter() {
         match selected {
@@ -1975,6 +2048,9 @@ fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations
             verify_line_segment_joins(&mut relation.relation_segments, relation_segment[2], start_height, end_height, selected, rela_idx);
         }
     }
+
+    app_state.relations = relations.clone();
+    app_state.tables = tables.clone();
 }
 
 fn verify_line_segment_joins(
