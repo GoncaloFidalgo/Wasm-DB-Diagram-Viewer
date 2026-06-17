@@ -955,9 +955,12 @@ impl TemplateApp {
                     ui.horizontal(|ui| {
                         let lost_focus = ui.text_edit_singleline(&mut self.options_menu.search_table).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                         if ui.button(RichText::new("Search").strong()).clicked() || lost_focus {
-                            for table in self.tables.iter() {
+                            self.selected.clear();
+                            for (table_idx, table) in self.tables.iter().enumerate() {
                                 if table.name == self.options_menu.search_table {
                                     self.scene_transform.translation = screen_rect.center().to_vec2() - (table.pos.to_vec2() * self.scene_transform.scaling);
+                                    self.selected.push(Selected::Table { table: table_idx, column: None });
+                                    break;
                                 }
                             }
                         }
