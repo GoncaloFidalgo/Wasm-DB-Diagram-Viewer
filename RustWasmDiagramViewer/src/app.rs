@@ -49,6 +49,8 @@ pub struct TemplateApp {
     pub undoer: Undoer<AppState>,
     #[serde(skip)]
     pub app_state: AppState,
+    #[serde(skip)]
+    pub options_menu: OptionsMenu,
     pub scene_transform: TSTransform,
 }
 #[derive(PartialEq, Clone)]
@@ -56,10 +58,22 @@ pub struct AppState {
     pub tables: Vec<Table>,
     pub relations: Vec<Relation>,
 }
-#[derive(PartialEq)]
-pub enum Teste {
-    Um,
-    Dois
+pub struct OptionsMenu {
+    pub cardinality_display: CardinalityDisplay,
+    pub description_indicator: DescriptionIndicator,
+    pub search_table: String,
+}
+#[derive(PartialEq, Clone, Copy)]
+pub enum CardinalityDisplay {
+    Never,
+    SelectedOnly,
+    Always,
+}
+#[derive(PartialEq, Clone, Copy)]
+pub enum DescriptionIndicator {
+    None,
+    Missing,
+    Existing,
 }
 #[derive(PartialEq)]
 pub enum Selected {
@@ -317,6 +331,11 @@ impl Default for TemplateApp {
                 tables: Vec::new(),
                 relations: Vec::new(),
             },
+            options_menu: OptionsMenu {
+                cardinality_display: CardinalityDisplay::SelectedOnly,
+                description_indicator: DescriptionIndicator::None,
+                search_table: String::new(),
+            },
             scene_transform: TSTransform::IDENTITY,
         }
     }
@@ -383,9 +402,10 @@ impl Table {
         read_only: bool,
         selected: &mut Vec<Selected>,
         relations: &Vec<Relation>,
+        description_indicator: DescriptionIndicator,
     ) -> (Vec2, Option<usize>) {
         let table_width = ctx.fonts_mut(|f| {
-            let header_width = 20.0 + f
+            let header_width = 30.0 + f
                 .layout_no_wrap(self.name.clone(), FontId::proportional(18.0), HEADER_TEXT)
                 .rect
                 .width();
@@ -409,6 +429,9 @@ impl Table {
                     .rect
                     .width();
                 total += name_w;
+
+                // Deixar sempre espaço para a bola vermelha se necessario (diametro + spacing)
+                total += 8.0 + 6.0;
 
                 // Lado direito depois
                 total += 10.0;
@@ -510,13 +533,13 @@ impl Table {
                     }).show(ui, |ui| {
                         let mut area_response = ui.allocate_ui(Vec2::ZERO, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
-                            if self.header_ui(ui, table_width).clicked() {
+                            if self.header_ui(ui, table_width, description_indicator).clicked() {
                                 if !ctx.input(|i| {i.modifiers.command_only()}) || read_only {selected.clear();}
                                 toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                             }
                             ui.add_space(2.0);
                             for (col_idx, column) in self.columns.iter().enumerate() {
-                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}, highlight_columns.contains(&col_idx)).clicked()  {
+                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}, highlight_columns.contains(&col_idx), description_indicator).clicked()  {
                                     if !ctx.input(|i| {i.modifiers.command_only()}) || read_only {
                                         selected.clear();
                                         toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0, read_only);
@@ -570,7 +593,7 @@ impl Table {
         return (delta_used, drag_stopped_on);
     }
 
-    fn header_ui(&mut self, ui: &mut Ui, table_width: f32) -> Response {
+    fn header_ui(&mut self, ui: &mut Ui, table_width: f32, description_indicator: DescriptionIndicator) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, HEADER_SIZE),
             Sense::click(),
@@ -591,12 +614,25 @@ impl Table {
             FontId::proportional(18.0),
             HEADER_TEXT,
         );
+        match description_indicator {
+            DescriptionIndicator::None => {}
+            DescriptionIndicator::Missing => {
+                if self.description.is_empty() {
+                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::RED);
+                }
+            }
+            DescriptionIndicator::Existing => {
+                if !self.description.is_empty() {
+                    ui.painter().circle_filled(pos2(rect.right() - 10.0, rect.center().y), 4.0, Color32::RED);
+                }
+            }
+        }
         response
     }
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool, highlight_for_relation: bool) -> Response {
+    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool, highlight_for_relation: bool, description_indicator: DescriptionIndicator) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, COL_SIZE),
             Sense::click(),
@@ -655,16 +691,37 @@ impl Column {
         }
 
         // Nome do campo
-        painter.text(
-            pos2(left_x, rect.center().y),
-            Align2::LEFT_CENTER,
-            &self.name,
+        let name_galley = painter.layout_no_wrap(
+            self.name.clone(),
             FontId::proportional(13.0),
             COL_NAME,
         );
 
+        painter.galley(
+            pos2(left_x, rect.center().y - name_galley.rect.height() * 0.5),
+            name_galley.clone(),
+            COL_NAME,
+        );
+        left_x += name_galley.rect.width() + 6.0;
+
+        // Desenha bola vermelha se necessario
+        match description_indicator {
+            DescriptionIndicator::None => {}
+            DescriptionIndicator::Missing => {
+                if self.description.is_empty() {
+                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::RED);
+                }
+            }
+            DescriptionIndicator::Existing => {
+                if !self.description.is_empty() {
+                    painter.circle_filled(pos2(4.0 + left_x, rect.center().y), 4.0, Color32::RED);
+                }
+            }
+        }
+
         let mut right_x = rect.right() - 10.0;
 
+        // Tipo do campo
         let type_galley = painter.layout_no_wrap(
             self.column_type.clone(),
             FontId::proportional(11.5),
@@ -776,7 +833,7 @@ impl TemplateApp {
         }
     }
 
-    fn draw_zoom_area(&mut self, ctx: &Context, ui: &Ui, bg_response: Response) {
+    fn draw_zoom_area(&mut self, ctx: &Context, screen_rect: Rect, bg_response: Response) {
         Area::new(Id::new("DragValue_zoom"))
             .anchor(Align2::CENTER_TOP, vec2(0.0, 20.0))
             .order(Order::Foreground)
@@ -816,7 +873,6 @@ impl TemplateApp {
                     });
             });
         
-        let screen_rect = ui.clip_rect();
         Area::new(Id::new("CenterScreen_button"))
             .anchor(Align2::CENTER_TOP, vec2(-130.0, 20.0))
             .order(Order::Foreground)
@@ -837,7 +893,7 @@ impl TemplateApp {
             });
     }
 
-    fn draw_edit_window(&mut self, ctx: &Context, abc: &mut Teste) {
+    fn draw_edit_window(&mut self, ctx: &Context, screen_rect: Rect) {
         Window::new("Inspector")
             .order(Order::Tooltip)
             .default_size(vec2(300.0, 400.0))
@@ -845,41 +901,62 @@ impl TemplateApp {
             .show(ctx, |ui| {
                 ui.label(RichText::new("Diagram Options:").strong().size(30.0));
                 ui.separator();
+
+                ui.label(RichText::new("Cardinality Display").strong().size(15.0));
                 ui.horizontal(|ui| {
-                    ui.radio_value(abc, Teste::Um, "First");
-                    ui.radio_value(abc, Teste::Dois, "Second");
-                    ui.radio_value(abc, Teste::Dois, "Third");
+                    ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Always, "Always");
+                    ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::SelectedOnly, "SelectedOnly");
+                    ui.radio_value(&mut self.options_menu.cardinality_display, CardinalityDisplay::Never, "Never");
                 });
 
+                ui.label(RichText::new("Description Indicator").strong().size(15.0));
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
+                    ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Missing, "Missing");
+                    ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Existing, "Existing");
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Undo Redo").strong().size(15.0));
+                    ui.label(RichText::new("(CTRL + Z/CTRL + Y)").size(10.0));
+                });
                 let can_undo = self.undoer.has_undo(&self.app_state);
                 let can_redo = self.undoer.has_redo(&self.app_state);
                 ui.horizontal(|ui| {
                     let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
                     let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
 
-                    let mut state_changed = false;
                     if (undo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)})) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
                         self.app_state = undo_text.clone();
-                        state_changed = true;
                     }
                     if (redo || ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)})) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
                         self.app_state = redo_text.clone();
-                        state_changed = true;
                     }
-                    if state_changed {
+                    if undo || redo {
                         self.tables = self.app_state.tables.clone();
                         self.relations = self.app_state.relations.clone();
                     }
                 });
-                self.undoer.feed_state(ui.input(|input| input.time), &self.app_state);
 
-                ui.label(RichText::new("Coisa1").size(10.0));
-                ui.label(RichText::new("Coisa1").size(10.0));
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Search Table").strong().size(15.0));
+                    ui.label(RichText::new("(Case Sensitive)").size(10.0));
+                });
+                ui.horizontal(|ui| {
+                    let lost_focus = ui.text_edit_singleline(&mut self.options_menu.search_table).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if ui.button(RichText::new("Search").strong()).clicked() || lost_focus {
+                        for table in self.tables.iter() {
+                            if table.name == self.options_menu.search_table {
+                                self.scene_transform.translation = screen_rect.center().to_vec2() - (table.pos.to_vec2() * self.scene_transform.scaling);
+                            }
+                        }
+                    }
+                });
+
                 ui.separator();
                 ui.label(RichText::new("Statistics:").strong().size(30.0));
                 ui.separator();
-                ui.label(RichText::new("Coisa1").size(10.0));
-                ui.label(RichText::new("Coisa1").size(10.0));
+                
                 ui.separator();
                 ui.label(RichText::new("Selected Object:").strong().size(30.0));
                 ui.separator();
@@ -1061,10 +1138,10 @@ impl TemplateApp {
                     .order(Order::Middle)
                     .default_size(ui.clip_rect().size())
                     .show(ui.ctx(), |ui| {
-                        draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted);
+                        draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
                     });
             } else {
-                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted);
+                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
             }
         }
 
@@ -1094,7 +1171,7 @@ impl TemplateApp {
     }
 }
 
-fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation, diagram_interacted: &mut bool) {
+fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation, diagram_interacted: &mut bool, cardinality_display: CardinalityDisplay) {
     let mut highlight_relation = false;
     for select in selected.iter() {
         match select {
@@ -1273,7 +1350,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         pts[last_idx - 2].x = new_end_x;
     }
 
-    draw_visual_relation(painter, &pts, selected.contains(&Selected::Relation { relation: rela_idx, segment: None }), line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx, unique, nullable);
+    draw_visual_relation(painter, &pts, selected.contains(&Selected::Relation { relation: rela_idx, segment: None }), line_stroke, table_proximity_limit, notation_size, start_dir, end_dir, last_idx, unique, nullable, cardinality_display);
 
     let rel_first_response = ui.interact(Rect::from_two_pos(pts[0], pts[1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "first")), Sense::click_and_drag());
     let rel_second_response = ui.interact(Rect::from_two_pos(pts[last_idx], pts[last_idx-1]).expand(line_width / 2.0).expand2(vec2(0.0, 3.0)), Id::new(("rel", rela_idx, "second")), Sense::click_and_drag());
@@ -1481,7 +1558,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
     }
 }
 
-fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool) {
+fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line_stroke: Stroke, table_proximity_limit: f32, notation_size: f32, start_dir: f32, end_dir: f32, last_idx: usize, unique: bool, nullable: bool, cardinality_display: CardinalityDisplay) {
     let mut pts = pts.clone();
     if unique {
         // Desenhar a notação One
@@ -1516,7 +1593,11 @@ fn draw_visual_relation(painter: &Painter, pts: &Vec<Pos2>, selected: bool, line
 
     // Desenhar a linha completa
     painter.line(pts, line_stroke);
-    if selected {
+    if match cardinality_display {
+        CardinalityDisplay::Never => {false}
+        CardinalityDisplay::SelectedOnly => {selected}
+        CardinalityDisplay::Always => {true}
+    } {
         painter.text(start_text_pos, Align2::CENTER_CENTER, if unique {"1"} else {"*"}, FontId::monospace(notation_size*2.0), Color32::BLACK);
         painter.text(end_text_pos, Align2::CENTER_CENTER, if nullable {"0..1"} else {"1"}, FontId::monospace(notation_size*2.0), Color32::BLACK);
     }
@@ -1768,6 +1849,22 @@ impl eframe::App for TemplateApp {
                     }
                 }
 
+                // Correr logica do undoer (undo and redo)
+                let mut state_changed = false;
+                if ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)}) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
+                    self.app_state = undo_text.clone();
+                    state_changed = true;
+                }
+                if ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)}) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
+                    self.app_state = redo_text.clone();
+                    state_changed = true;
+                }
+                if state_changed {
+                    self.tables = self.app_state.tables.clone();
+                    self.relations = self.app_state.relations.clone();
+                }
+                self.undoer.feed_state(ui.input(|input| input.time), &self.app_state);
+
                 // Colocar o background a controlar a Scene (PanAndDrag)
                 Scene::new()
                     .drag_pan_buttons(if self.read_only {DragPanButtons::all()} else {DragPanButtons::all().difference(DragPanButtons::PRIMARY)})
@@ -1775,10 +1872,10 @@ impl eframe::App for TemplateApp {
                     .register_pan_and_zoom(ui, &mut bg_response, &mut self.scene_transform);
 
                 // Criar window de edição no ecra
-                self.draw_edit_window(ctx, &mut Teste::Um);
+                self.draw_edit_window(ctx, ui.clip_rect());
 
                 // Controlar zoom com uma barra superior horizontal
-                self.draw_zoom_area(ctx, ui, bg_response);
+                self.draw_zoom_area(ctx, ui.clip_rect(), bg_response);
             }
 
             let mut delta_used = Vec2::ZERO;
@@ -1787,7 +1884,7 @@ impl eframe::App for TemplateApp {
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
                 let old_transform = self.scene_transform;
-                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected, &self.relations);
+                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected, &self.relations, self.options_menu.description_indicator);
                 if delta_received != Vec2::ZERO {
                     delta_used = delta_received;
                 }
