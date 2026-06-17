@@ -89,6 +89,7 @@ class DiagramViewer extends Page
                     ->compact()
                     ->schema([
                         Flex::make([
+                            // LEFT
                             Flex::make([
                                 Action::make('back')
                                     ->label('Diagramas')
@@ -116,15 +117,19 @@ class DiagramViewer extends Page
                                     ]),
                             ])->alignStart()->grow(false),
 
+                            //CENTER
                             Flex::make([
                                 Select::make('selectedVersionId')
                                     ->hiddenLabel()
                                     ->live()
                                     ->selectablePlaceholder(false)
+                                    ->extraAttributes([
+                                        'style' => 'max-width: 200px; width: 100%;'
+                                    ])
                                     ->extraInputAttributes([
                                         'x-data' => '{ previousValue: null }',
                                         'x-init' => 'previousValue = $el.value',
-                                        'x-on:change.capture' => 'previousValue = window.handleVersionChange($event, $el, previousValue)'
+                                        'x-on:change.capture' => 'previousValue = window.handleVersionChange($event, $el, previousValue)',
                                     ])
                                     ->options(function () {
                                         $query = Diagram::where('diagram_id', $this->diagramId)
@@ -169,10 +174,6 @@ class DiagramViewer extends Page
                                         ->label('Nova Versão')
                                         ->icon('heroicon-m-document-plus')
                                         ->color('primary')
-//                                        ->schema([])
-//                                        ->modalWidth('md')
-//                                        ->modalFooterActionsAlignment(Alignment::Center)
-//                                        ->modalAlignment(Alignment::Center)
                                         ->requiresConfirmation()
                                         ->modalIcon('')
                                         ->modalHeading('Criar versão')
@@ -197,11 +198,19 @@ class DiagramViewer extends Page
                                             // Só mostra o botão se não houver versoes
                                             return !$hasDraft;
                                         }),
+                                ])->extraAttributes([
+                                    'style' => 'white-space: nowrap; min-width: max-content;'
                                 ]),
-                            ])->alignBetween()->grow(),
+                            ])
+                                ->alignBetween()
+                                ->gap(4)
+                                ->grow(false)
+                            ->extraAttributes([
+                                'style' => 'flex-wrap: nowrap; min-width: max-content;'
+                            ]),
 
+                            //RIGHT
                             Flex::make([
-
                                 Actions::make([
                                     SyncDiagramAction::make(),
                                     ActionGroup::make([
@@ -239,12 +248,14 @@ class DiagramViewer extends Page
                                     PublishDiagramAction::make()
                                         ->visible(fn() => $this->isOwner),
 
-                                ])
-                                    ->alignEnd(),
+                                ])->alignEnd(),
                             ])
+                                ->alignEnd()
+                                ->grow(false)
                         ])
                             ->alignBetween()
-                            ->gap(4)->grow()
+                            ->gap(4)
+                            ->grow()
                             ->extraAttributes([
                                 'class' => 'custom-toolbar',
                                 'style' => 'flex-wrap: wrap !important; width: 100%;'
