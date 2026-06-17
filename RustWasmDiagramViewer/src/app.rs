@@ -1196,7 +1196,6 @@ impl TemplateApp {
                 )
             }).count() >= 1 {
                 Area::new(Id::new((rela_idx, "area")))
-                    .order(Order::Middle)
                     .default_size(ui.clip_rect().size())
                     .show(ui.ctx(), |ui| {
                         draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
