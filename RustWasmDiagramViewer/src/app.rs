@@ -803,7 +803,7 @@ impl TemplateApp {
         sync_trigger_clone: Arc<Mutex<bool>>,
         txt_export_trigger_clone: Arc<Mutex<bool>>,
     ) -> Self {
-        let mut app: TemplateApp = if let Some(storage) = cc.storage && false {
+        let mut app: TemplateApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Self::default()
@@ -842,21 +842,48 @@ impl TemplateApp {
     // Cria o layout inicial
     fn apply_auto_layout(&mut self) {
         // Criar apenas se estiverem na posicao default (0.0)
-        let needs_layout = self
-            .tables
-            .first()
-            .map_or(false, |t| t.pos == pos2(0.0, 0.0));
+        let needs_layout = self.tables.len() != 0 && self.tables.iter().filter(|t| {t.pos != pos2(0.0, 0.0)}).count() == 0;
 
         if needs_layout {
-            let mut x = 200.0;
-            let mut y = 200.0;
-            for table in &mut self.tables {
-                table.pos = pos2(x, y);
-                x += 350.0;
-                if x > 1200.0 {
-                    x = 50.0;
-                    y += 350.0;
+            let mut table_idx_order = Vec::new();
+            // Escolher ordem de posicionamento
+            for relation in self.relations.iter() {
+                if !table_idx_order.contains(&relation.tables[0]) {
+                    table_idx_order.push(relation.tables[0]);
                 }
+                if !table_idx_order.contains(&relation.tables[1]) {
+                    table_idx_order.push(relation.tables[1]);
+                    for relation_recursive in self.relations.iter() {
+                        if relation.tables[1] == relation_recursive.tables[0] {
+                            if !table_idx_order.contains(&relation_recursive.tables[0]) {
+                                table_idx_order.push(relation_recursive.tables[0]);
+                            }
+                        }
+                    }
+                }
+            }
+            for table_idx in 0..self.tables.len() {
+                if !table_idx_order.contains(&table_idx) {
+                    table_idx_order.push(table_idx);
+                }
+            }
+
+            // Posicionar as tabelas
+            let max_tables_per_row = ((self.tables.len() as f32).sqrt().ceil() as usize).min(4);
+            let height_spacing: f32 = 100.0;
+            let width_spacing: f32 = 60.0;
+            let mut max_height_found: f32 = 0.0;
+            let mut height_offset: f32 = 0.0;
+            for (iter_idx, table_idx) in table_idx_order.iter().enumerate() {
+                if iter_idx % max_tables_per_row == 0 {
+                    height_offset += max_height_found + height_spacing;
+                    max_height_found = 0.0;
+                }
+                let table_height = 8.0 + HEADER_SIZE + (self.tables[*table_idx].columns.len() as f32 * COL_SIZE);
+                max_height_found = max_height_found.max(table_height);
+                let x_pos = ((width_spacing + 300.0) * (iter_idx % max_tables_per_row + 1) as f32) - 150.0;
+                let y_pos = height_offset + table_height/2.0;
+                self.tables[*table_idx].pos = pos2(x_pos, y_pos);
             }
         }
     }
