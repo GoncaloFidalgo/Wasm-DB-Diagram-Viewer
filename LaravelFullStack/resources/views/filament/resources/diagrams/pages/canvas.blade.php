@@ -318,6 +318,7 @@ if (window.pendingVersion && window.pendingSelectElement) {
 
         // Exportar o Canvas Final Limpo
         try {
+
             finalCanvas.toBlob(function (blob) {
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -329,6 +330,7 @@ if (window.pendingVersion && window.pendingSelectElement) {
                 setTimeout(() => URL.revokeObjectURL(url), 150);
             }, 'image/png');
         } catch (e) {
+            console.log("asd")
             const link = document.createElement('a');
             link.download = '{{ $this->diagramName }}.png';
             link.href = finalCanvas.toDataURL('image/png');
