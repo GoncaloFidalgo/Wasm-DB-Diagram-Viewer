@@ -114,59 +114,9 @@ class DiagramViewer extends Page
                                     ->hiddenLabel()
                                     ->disabled()
                                     ->suffixActions([
-                                        Action::make('info')
-                                            ->icon('heroicon-m-information-circle')
-                                            ->color('gray')
-                                            ->tooltip('Detalhes do Diagrama')
-                                            ->modalHeading('Detalhes do diagrama')
-                                            ->modalWidth('sm')
-                                            ->modalSubmitAction(false)
-                                            ->modalCancelAction(false)
-                                            ->schema([
-                                                TextEntry::make('created_at')
-                                                    ->label('Data de criação')
-                                                    ->inlineLabel()
-                                                    ->extraAttributes(['style' => 'white-space: nowrap; min-width: max-content;'])
-                                                    ->state(function () {
-                                                        $min = Diagram::where('diagram_id', $this->diagramId)->min('created_at');
-                                                        return $min
-                                                            ? Carbon::parse($min)->timezone('Europe/Lisbon')->format('d/m/Y - H:i')
-                                                            : 'Desconhecida';
-                                                    }),
-
-                                                TextEntry::make('published_count')
-                                                    ->label('Total de publicações')
-                                                    ->inlineLabel()
-                                                    ->extraAttributes(['style' => 'white-space: nowrap; min-width: max-content;'])
-                                                    ->state(function () {
-                                                        $count = Diagram::where('diagram_id', $this->diagramId)
-                                                            ->where('is_published', 'true')
-                                                            ->count();
-                                                        return $count . ' ' . ($count === 1 ? 'versão' : 'versões');
-                                                    }),
-
-                                                TextEntry::make('last_published_at')
-                                                    ->label('Data da última publicação')
-                                                    ->inlineLabel()
-                                                    ->extraAttributes(['style' => 'white-space: nowrap; min-width: max-content;'])
-                                                    ->state(function () {
-                                                        $max = Diagram::where('diagram_id', $this->diagramId)
-                                                            ->where('is_published', 'true')
-                                                            ->max('published_at');
-                                                        return $max
-                                                            ? Carbon::parse($max)->timezone('Europe/Lisbon')->format('d/m/Y - H:i')
-                                                            : 'Nenhuma';
-                                                    }),
-                                            ]),
                                         EditDiagramMetadataAction::configure(
-                                            Action::make('edit_metadata')->visible(fn() => !$this->isPublished)
+                                            Action::make('edit_metadata')
                                         ),
-                                        Action::make('is_readonly')
-                                            ->icon('heroicon-m-lock-closed')
-                                            ->color('warning')
-                                            ->disabled()
-                                            ->tooltip('Versão publicada (Apenas leitura)')
-                                            ->visible(fn() => $this->isPublished),
                                     ]),
                             ])->alignStart()->grow(false),
 

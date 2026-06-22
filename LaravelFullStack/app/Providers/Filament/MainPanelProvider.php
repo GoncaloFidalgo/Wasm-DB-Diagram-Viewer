@@ -28,6 +28,7 @@ class MainPanelProvider extends PanelProvider
             ->id('main')
             ->path('')
             ->login(IPLeiriaLogin::class)
+            ->registration()
             ->brandName('Wasm DB Diagram Viewer')
             ->topNavigation()
             ->colors([
