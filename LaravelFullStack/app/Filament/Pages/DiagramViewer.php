@@ -265,7 +265,7 @@ class DiagramViewer extends Page
                                             Diagram::where('id', $this->recordId)->update([
                                                 'is_published' => true,
                                                 'published_at' => now(),
-                                                'visibility' => 'private'
+                                                'visibility' => 'public'
                                             ]);
 
                                             // 2. Atualiza o estado do Livewire
