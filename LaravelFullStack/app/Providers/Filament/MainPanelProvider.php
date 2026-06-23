@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Auth\CustomProfile;
 use App\Filament\Pages\Auth\IPLeiriaLogin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -29,6 +30,7 @@ class MainPanelProvider extends PanelProvider
             ->path('')
             ->login(IPLeiriaLogin::class)
             ->registration()
+            ->profile(CustomProfile::class)
             ->brandName('Wasm DB Diagram Viewer')
             ->topNavigation()
             ->colors([
