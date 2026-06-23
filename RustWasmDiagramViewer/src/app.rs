@@ -871,7 +871,7 @@ impl TemplateApp {
             }
 
             // Posicionar as tabelas
-            let max_tables_per_row = ((self.tables.len() as f32).sqrt().ceil() as usize).min(4);
+            let max_tables_per_row = if self.tables.len() <= 4 {2} else {self.tables.len().div_ceil(2).min(5)};
             let height_spacing: f32 = 100.0;
             let width_spacing: f32 = 60.0;
             let mut max_height_found: f32 = 0.0;
@@ -883,7 +883,11 @@ impl TemplateApp {
                 }
                 let table_height = 8.0 + HEADER_SIZE + (self.tables[*table_idx].columns.len() as f32 * COL_SIZE);
                 max_height_found = max_height_found.max(table_height);
-                let x_pos = ((width_spacing + 300.0) * (iter_idx % max_tables_per_row + 1) as f32) - 150.0;
+                let x_pos = if (iter_idx/max_tables_per_row)%2 == 0 {
+                    ((width_spacing + 300.0) * (iter_idx % max_tables_per_row + 1) as f32) - 150.0
+                } else {
+                    ((width_spacing + 300.0) * ((iter_idx % max_tables_per_row) as f32 - 5.0).abs()) - 150.0
+                };
                 let y_pos = height_offset + table_height/2.0;
                 self.tables[*table_idx].pos = pos2(x_pos, y_pos);
             }
