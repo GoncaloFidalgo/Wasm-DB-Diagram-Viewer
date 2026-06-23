@@ -64,6 +64,7 @@ pub struct TemplateApp {
 pub struct AppState {
     pub tables: Vec<Table>,
     pub relations: Vec<Relation>,
+    pub selected: Vec<Selected>,
 }
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 pub struct OptionsMenu {
@@ -85,7 +86,7 @@ pub enum DescriptionIndicator {
     Existing,
     None,
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Selected {
     Table { table: usize, column: Option<usize> },
     Relation { relation: usize, segment: Option<usize> },
@@ -340,6 +341,7 @@ impl Default for TemplateApp {
             app_state: AppState {
                 tables: Vec::new(),
                 relations: Vec::new(),
+                selected: Vec::new(),
             },
             options_menu: OptionsMenu {
                 cardinality_display: CardinalityDisplay::SelectedOnly,
@@ -822,7 +824,7 @@ impl TemplateApp {
                     app_state.sync_trigger = sync_trigger_clone.clone();
                     app_state.txt_export_trigger = txt_export_trigger_clone.clone();
                     app_state.undoer = Undoer::default();
-                    app_state.app_state = AppState { tables: app_state.tables.clone(), relations: app_state.relations.clone() };
+                    app_state.app_state = AppState { tables: app_state.tables.clone(), relations: app_state.relations.clone(), selected: Vec::new() };
                     return app_state;
                 }
                 Err(e) => log::error!("Failed to parse JSON: {}", e),
@@ -835,7 +837,7 @@ impl TemplateApp {
         app.sync_trigger = sync_trigger_clone;
         app.txt_export_trigger = txt_export_trigger_clone;
         app.undoer = Undoer::default();
-        app.app_state = AppState { tables: app.tables.clone(), relations: app.relations.clone() };
+        app.app_state = AppState { tables: app.tables.clone(), relations: app.relations.clone(), selected: Vec::new() };
         app
     }
 
@@ -976,6 +978,7 @@ impl TemplateApp {
                                 if undo || redo {
                                     self.tables = self.app_state.tables.clone();
                                     self.relations = self.app_state.relations.clone();
+                                    self.selected = self.app_state.selected.clone();
                                 }
                             });
                         });
@@ -1246,6 +1249,7 @@ impl TemplateApp {
         if diagram_interacted {
             self.app_state.tables = self.tables.clone();
             self.app_state.relations = self.relations.clone();
+            self.app_state.selected = self.selected.clone();
         }
 
         if delta_used != Vec2::ZERO {
@@ -1840,7 +1844,7 @@ impl eframe::App for TemplateApp {
                     new_app.read_only = self.read_only;
                     new_app.apply_auto_layout();
                     new_app.undoer = Undoer::default();
-                    new_app.app_state = AppState { tables: new_app.tables.clone(), relations: new_app.relations.clone() };
+                    new_app.app_state = AppState { tables: new_app.tables.clone(), relations: new_app.relations.clone(), selected: Vec::new() };
 
                     // Substitui a aplicação inteira para aplicar o novo estado do diagrama
                     *self = new_app;
@@ -2072,6 +2076,7 @@ impl eframe::App for TemplateApp {
                 if state_changed {
                     self.tables = self.app_state.tables.clone();
                     self.relations = self.app_state.relations.clone();
+                    self.selected = self.app_state.selected.clone();
                 }
                 self.undoer.feed_state(ui.input(|input| input.time), &self.app_state);
 
@@ -2365,6 +2370,7 @@ fn use_verify_in_selected(ctx: &Context, selected: &mut Vec<Selected>, relations
 
     app_state.relations = relations.clone();
     app_state.tables = tables.clone();
+    app_state.selected = selected.clone();
 }
 
 fn verify_line_segment_joins(
