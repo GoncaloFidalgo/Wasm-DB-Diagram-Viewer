@@ -314,6 +314,7 @@ class DiagramViewer extends Page
             'diagram' => json_decode($jsonPayload, true),
         ]);
 
+        $this->schemaJson = $jsonPayload;
 //        Notification::make()
 //            ->title('Sucesso!')
 //            ->body('Diagrama guardado com sucesso.')
