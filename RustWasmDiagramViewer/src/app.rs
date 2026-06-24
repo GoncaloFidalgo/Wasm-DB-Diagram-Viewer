@@ -947,7 +947,7 @@ impl TemplateApp {
 
                         ui.visuals_mut().override_text_color = Some(Color32::BLACK);
 
-                        if ui.button("◎").clicked() {
+                        if ui.button("◎").on_hover_text("Space").clicked() {
                             center_screen(ctx, screen_rect, &mut self.scene_transform, &self.tables, &self.relations, false);
                         }
                     });
@@ -970,8 +970,8 @@ impl TemplateApp {
                             let can_undo = self.undoer.has_undo(&self.app_state);
                             let can_redo = self.undoer.has_redo(&self.app_state);
                             ui.horizontal(|ui| {
-                                let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).clicked();
-                                let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).clicked();
+                                let undo = ui.add_enabled(can_undo, Button::new("⟲ Undo")).on_hover_text("Ctrl+Z").clicked();
+                                let redo = ui.add_enabled(can_redo, Button::new("⟳ Redo")).on_hover_text("Ctrl+Y").clicked();
 
                                 if undo && let Some(undo_text) = self.undoer.undo(&self.app_state) {
                                     self.app_state = undo_text.clone();
@@ -2032,6 +2032,11 @@ impl eframe::App for TemplateApp {
 
                 // Detetar se nao estamos a usar o teclado para por exemplo escrever antes de fazer estas acoes
                 if !ctx.wants_keyboard_input() {
+                    // Centrar o ecra
+                    if ctx.input(|i| {i.key_pressed(Key::Space)}) {
+                        center_screen(ctx, ui.clip_rect(), &mut self.scene_transform, &self.tables, &self.relations, false);
+                    }
+
                     // Mover o selecionado entre tabelas/colunas
                     if self.selected.len() == 1 {
                         match &mut self.selected[0] {
