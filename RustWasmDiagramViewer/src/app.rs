@@ -1240,11 +1240,13 @@ impl TemplateApp {
                     if *relation == rela_idx
                 )
             }).count() >= 1 {
-                Area::new(Id::new((rela_idx, "area")))
-                    .default_size(ui.clip_rect().size())
-                    .show(ui.ctx(), |ui| {
-                        draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
-                    });
+                let area = Area::new(Id::new((rela_idx, "area"))).default_size(ui.clip_rect().size());
+                ui.memory_mut(|m| {
+                    m.areas_mut().move_to_top(area.layer());
+                });
+                area.show(ui.ctx(), |ui| {
+                    draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
+                });
             } else {
                 draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
             }
@@ -1373,7 +1375,11 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
     let mut highlight_relation = false;
     for select in selected.iter() {
         match select {
-            Selected::Relation { .. } => {}
+            Selected::Relation { relation, .. } => {
+                if *relation == rela_idx {
+                    highlight_relation = true;
+                }
+            }
             Selected::Table { table, column } => {
                 if let Some(column) = *column {
                     if relation.tables[0] == *table && relation.columns[0] == column {
@@ -2024,63 +2030,66 @@ impl eframe::App for TemplateApp {
                     }
                 }
 
-                // Mover o selecionado entre tabelas/colunas
-                if self.selected.len() == 1 {
-                    match &mut self.selected[0] {
-                        Selected::Relation { .. } => {}
-                        Selected::Table { table, column } => {
-                            if ctx.input(|i| {i.key_pressed(Key::ArrowRight)}) {
-                                *table = (*table + 1) % self.tables.len();
-                                *column = None;
-                            }
-                            if ctx.input(|i| {i.key_pressed(Key::ArrowLeft)}) {
-                                *table = (*table + self.tables.len() - 1) % self.tables.len();
-                                *column = None;
-                            }
-                            match column {
-                                Some(col_idx) => {
-                                    if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
-                                        if *col_idx != self.tables[*table].columns.len()-1 {
-                                            *col_idx += 1;
-                                        } else {
-                                            *column = None;
-                                        }
-                                    } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
-                                        if *col_idx != 0 {
-                                            *col_idx -= 1;
-                                        } else {
-                                            *column = None;
+                // Detetar se nao estamos a usar o teclado para por exemplo escrever antes de fazer estas acoes
+                if !ctx.wants_keyboard_input() {
+                    // Mover o selecionado entre tabelas/colunas
+                    if self.selected.len() == 1 {
+                        match &mut self.selected[0] {
+                            Selected::Relation { .. } => {}
+                            Selected::Table { table, column } => {
+                                if ctx.input(|i| {i.key_pressed(Key::ArrowRight)}) {
+                                    *table = (*table + 1) % self.tables.len();
+                                    *column = None;
+                                }
+                                if ctx.input(|i| {i.key_pressed(Key::ArrowLeft)}) {
+                                    *table = (*table + self.tables.len() - 1) % self.tables.len();
+                                    *column = None;
+                                }
+                                match column {
+                                    Some(col_idx) => {
+                                        if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
+                                            if *col_idx != self.tables[*table].columns.len()-1 {
+                                                *col_idx += 1;
+                                            } else {
+                                                *column = None;
+                                            }
+                                        } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
+                                            if *col_idx != 0 {
+                                                *col_idx -= 1;
+                                            } else {
+                                                *column = None;
+                                            }
                                         }
                                     }
-                                }
-                                None => {
-                                    if self.tables[*table].columns.len() != 0 {
-                                        if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
-                                            *column = Some(0);
-                                        } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
-                                            *column = Some(self.tables[*table].columns.len()-1);
+                                    None => {
+                                        if self.tables[*table].columns.len() != 0 {
+                                            if ctx.input(|i| {i.key_pressed(Key::ArrowDown)}) {
+                                                *column = Some(0);
+                                            } else if ctx.input(|i| {i.key_pressed(Key::ArrowUp)}) {
+                                                *column = Some(self.tables[*table].columns.len()-1);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Correr logica do undoer (undo and redo)
-                let mut state_changed = false;
-                if ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)}) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
-                    self.app_state = undo_text.clone();
-                    state_changed = true;
-                }
-                if ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)}) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
-                    self.app_state = redo_text.clone();
-                    state_changed = true;
-                }
-                if state_changed {
-                    self.tables = self.app_state.tables.clone();
-                    self.relations = self.app_state.relations.clone();
-                    self.selected = self.app_state.selected.clone();
+                    // Correr logica do undoer (undo and redo)
+                    let mut state_changed = false;
+                    if ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Z)}) && let Some(undo_text) = self.undoer.undo(&self.app_state) {
+                        self.app_state = undo_text.clone();
+                        state_changed = true;
+                    }
+                    if ui.input(|i| {i.modifiers.command && i.key_pressed(Key::Y)}) && let Some(redo_text) = self.undoer.redo(&self.app_state) {
+                        self.app_state = redo_text.clone();
+                        state_changed = true;
+                    }
+                    if state_changed {
+                        self.tables = self.app_state.tables.clone();
+                        self.relations = self.app_state.relations.clone();
+                        self.selected = self.app_state.selected.clone();
+                    }
                 }
                 self.undoer.feed_state(ui.input(|input| input.time), &self.app_state);
 
