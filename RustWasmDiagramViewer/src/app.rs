@@ -1598,8 +1598,11 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
         if !front_line && rel_first_response.secondary_clicked() {
             selected.clear();
             if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
-            let mid = ((pts[0].x + pts[1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
+            let mut mid = ((pts[0].x + pts[1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
             let next = ((pts[1].y + pts[2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
+            if let Some(mouse_pos) = rel_first_response.interact_pointer_pos() {
+                mid = (mouse_pos.x - scene_transform.translation.x) / scene_transform.scaling;
+            }
             relation.relation_segments.insert(0, mid);
             relation.relation_segments.insert(1, next);
             Popup::open_id(ui.ctx(), popup_first_id);
@@ -1618,8 +1621,11 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 relation.relation_segments.push(third);
             } else {
                 if auto_align {relation.relation_segments.push((x_align - scene_transform.translation.x) / scene_transform.scaling);}
-                let mid = ((pts[last_idx].x + pts[last_idx - 1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
+                let mut mid = ((pts[last_idx].x + pts[last_idx - 1].x) / 2.0 - scene_transform.translation.x) / scene_transform.scaling;
                 let next = ((pts[last_idx - 1].y + pts[last_idx - 2].y) / 2.0 - scene_transform.translation.y) / scene_transform.scaling;
+                if let Some(mouse_pos) = rel_second_response.interact_pointer_pos() {
+                    mid = (mouse_pos.x - scene_transform.translation.x) / scene_transform.scaling;
+                }
                 relation.relation_segments.push(next);
                 relation.relation_segments.push(mid);
             }
@@ -1700,7 +1706,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
                 selected.clear();
                 let mut mid = (if is_vertical { (p1.y + p2.y) / 2.0 - scene_transform.translation.y } else { (p1.x + p2.x) / 2.0 - scene_transform.translation.x }) / scene_transform.scaling;
                 let next = (if is_vertical { (p2.x + pts[seg_idx + 3].x) / 2.0 - scene_transform.translation.x } else { (p2.y + pts[seg_idx + 3].y) / 2.0 - scene_transform.translation.y }) / scene_transform.scaling;
-                if let Some(mouse_pos) = ui.input(|i| {i.pointer.latest_pos()}) {
+                if let Some(mouse_pos) = seg_response.interact_pointer_pos() {
                     mid = if is_vertical {mouse_pos.y - scene_transform.translation.y} else {mouse_pos.x - scene_transform.translation.x} / scene_transform.scaling;
                 }
                 relation.relation_segments.insert(seg_idx + 1, mid);
