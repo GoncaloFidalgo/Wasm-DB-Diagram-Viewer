@@ -1090,13 +1090,12 @@ impl TemplateApp {
 
                                         // --- Description ---
                                         ui.label(RichText::new("Description:").size(19.0));
-                                        ui.add_enabled_ui(!self.read_only, |ui| {
-                                            ui.add_sized(
-                                                ui.available_size(),
-                                                TextEdit::multiline(&mut t.description)
-                                                    .font(FontId::proportional(19.0))
-                                            );
-                                        });
+                                        ui.add_sized(
+                                            ui.available_size(),
+                                            TextEdit::multiline(&mut t.description)
+                                                .interactive(!self.read_only)
+                                                .font(FontId::proportional(19.0))
+                                        );
                                     },
                                     Some(column_idx) => {
                                         // Save table name by clonning
@@ -1161,13 +1160,12 @@ impl TemplateApp {
 
                                         // --- Description ---
                                         ui.label(RichText::new("Description:").size(19.0));
-                                        ui.add_enabled_ui(!self.read_only, |ui| {
-                                            ui.add_sized(
-                                                ui.available_size(),
-                                                TextEdit::multiline(&mut c.description)
-                                                    .font(FontId::proportional(19.0))
-                                            );
-                                        });
+                                        ui.add_sized(
+                                            ui.available_size(),
+                                            TextEdit::multiline(&mut c.description)
+                                                .interactive(!self.read_only)
+                                                .font(FontId::proportional(19.0))
+                                        );
                                     }
                                 }
                             },
@@ -1200,13 +1198,12 @@ impl TemplateApp {
 
                                 // --- Description ---
                                 ui.label(RichText::new("Description:").size(19.0));
-                                ui.add_enabled_ui(!self.read_only, |ui| {
-                                    ui.add_sized(
-                                        ui.available_size(),
-                                        TextEdit::multiline(&mut r.description)
-                                            .font(FontId::proportional(19.0))
-                                    );
-                                });
+                                ui.add_sized(
+                                    ui.available_size(),
+                                    TextEdit::multiline(&mut r.description)
+                                        .interactive(!self.read_only)
+                                        .font(FontId::proportional(19.0))
+                                );
                             }
                         }
                     } else {
