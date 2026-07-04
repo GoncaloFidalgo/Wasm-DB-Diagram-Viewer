@@ -1046,18 +1046,20 @@ impl TemplateApp {
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
                     });
 
-                    ui.add_space(20.0);
+                    if !self.read_only {
+                        ui.add_space(20.0);
 
-                    ui.label(RichText::new("Auto Reposition Tables").strong().size(16.5));
-                    ui.horizontal(|ui| {
-                        ui.label("Will reposition Tables and reset Relations.");
-                        if ui.button(RichText::new("Apply").strong()).clicked() {
-                            self.apply_auto_layout(true);
-                            self.app_state.tables = self.tables.clone();
-                            self.app_state.relations = self.relations.clone();
-                            self.app_state.selected = self.selected.clone();
-                        }
-                    });
+                        ui.label(RichText::new("Auto Reposition Tables").strong().size(16.5));
+                        ui.horizontal(|ui| {
+                            ui.label("Will reposition Tables and reset Relations.");
+                            if ui.button(RichText::new("Apply").strong()).clicked() {
+                                self.apply_auto_layout(true);
+                                self.app_state.tables = self.tables.clone();
+                                self.app_state.relations = self.relations.clone();
+                                self.app_state.selected = self.selected.clone();
+                            }
+                        });
+                    }
 
                     ui.add_space(20.0);
 
