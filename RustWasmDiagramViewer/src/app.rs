@@ -814,7 +814,7 @@ impl TemplateApp {
         if !json_data.is_empty() && json_data.as_str() != "{}" {
             match serde_json::from_str::<TemplateApp>(&json_data) {
                 Ok(mut app_state) => {
-                    app_state.apply_auto_layout();
+                    app_state.apply_auto_layout(false);
                     app_state.schema_loaded = true;
                     app_state.save_trigger = save_trigger_clone.clone();
                     app_state.read_only = read_only;
@@ -831,7 +831,7 @@ impl TemplateApp {
             }
         }
 
-        app.apply_auto_layout();
+        app.apply_auto_layout(false);
         app.save_trigger = save_trigger_clone;
         app.export_trigger = export_trigger_clone;
         app.sync_trigger = sync_trigger_clone;
@@ -842,11 +842,11 @@ impl TemplateApp {
     }
 
     // Cria o layout inicial
-    fn apply_auto_layout(&mut self) {
+    fn apply_auto_layout(&mut self, force_layout: bool) {
         // Criar apenas se estiverem na posicao default (0.0)
-        let needs_layout = self.tables.len() != 0 && self.tables.iter().filter(|t| {t.pos != pos2(0.0, 0.0)}).count() == 0;
+        let needs_layout = self.tables.len() != 0 && self.tables.iter().filter(|t| {t.pos != Pos2::ZERO}).count() == 0;
 
-        if needs_layout {
+        if needs_layout || force_layout {
             let mut table_idx_order = Vec::new();
             // Escolher ordem de posicionamento
             for relation in self.relations.iter() {
@@ -870,6 +870,11 @@ impl TemplateApp {
                 }
             }
 
+            // Reiniciar relações, se tiverem sido mexidas
+            for relation in self.relations.iter_mut() {
+                relation.relation_segments.clear();
+            }
+
             // Posicionar as tabelas
             let max_tables_per_row = if self.tables.len() <= 4 {2} else {self.tables.len().div_ceil(2).min(5)};
             let height_spacing: f32 = 100.0;
@@ -891,7 +896,28 @@ impl TemplateApp {
                 let y_pos = height_offset + table_height/2.0;
                 self.tables[*table_idx].pos = pos2(x_pos, y_pos);
             }
+        } else {
+            // Se houverem novas tabelas por posicionar, colocar no centro do diagrama existente
+            let mut diagram_center = vec2(0.0, 0.0);
+            let mut tables_count = 0.0;
+            for table in self.tables.iter() {
+                if table.pos != Pos2::ZERO {
+                    diagram_center += table.pos.to_vec2();
+                    tables_count += 1.0;
+                }
+            }
+            if tables_count != 0.0 {
+                diagram_center /= tables_count;
+            }
+            for table in self.tables.iter_mut() {
+                if table.pos == Pos2::ZERO {
+                    table.pos = diagram_center.to_pos2();
+                }
+            }
         }
+
+        // Limpar a lista de selecionados
+        self.selected.clear();
     }
 
     fn draw_zoom_area(&mut self, ctx: &Context, screen_rect: Rect, bg_response: Response) {
@@ -1018,6 +1044,19 @@ impl TemplateApp {
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Missing, "Missing");
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::Existing, "Existing");
                         ui.radio_value(&mut self.options_menu.description_indicator, DescriptionIndicator::None, "None");
+                    });
+
+                    ui.add_space(20.0);
+
+                    ui.label(RichText::new("Auto Reposition Tables").strong().size(16.5));
+                    ui.horizontal(|ui| {
+                        ui.label("Will reposition Tables and reset Relations.");
+                        if ui.button(RichText::new("Apply").strong()).clicked() {
+                            self.apply_auto_layout(true);
+                            self.app_state.tables = self.tables.clone();
+                            self.app_state.relations = self.relations.clone();
+                            self.app_state.selected = self.selected.clone();
+                        }
                     });
 
                     ui.add_space(20.0);
@@ -1855,7 +1894,7 @@ impl eframe::App for TemplateApp {
                     new_app.sync_trigger = self.sync_trigger.clone();
                     new_app.txt_export_trigger = self.txt_export_trigger.clone();
                     new_app.read_only = self.read_only;
-                    new_app.apply_auto_layout();
+                    new_app.apply_auto_layout(false);
                     new_app.undoer = Undoer::default();
                     new_app.app_state = AppState { tables: new_app.tables.clone(), relations: new_app.relations.clone(), selected: Vec::new() };
 
