@@ -92,7 +92,8 @@ class DatabaseExtractorService
                         'relation_segments' => [],
                         'tables' => [$fromTableIdx, $toTableIdx],
                         'columns' => [$fromColIdx, $toColIdx],
-                        'description' => "FK: $tableName.$fk->from -> $fk->table.$fk->to"
+                        'description' => "FK: $tableName.$fk->from -> $fk->table.$fk->to [$fk->type]",
+                        'type' => $fk->type,
                     ];
                 }
             }
@@ -246,13 +247,14 @@ class DatabaseExtractorService
 
         // Obter os indexes
         $indexes = Schema::connection('dynamic_extract')->getIndexes($tableName);
+
         $pkColumns = [];
         $uniqueColumns = [];
         foreach ($indexes as $index) {
             if ($index['primary']) {
                 $pkColumns = $index['columns'];
             }
-            if ($index['unique']) {
+            if ($index['unique'] &&  count($index['columns']) === 1) {
                 $uniqueColumns = $index['columns'];
             }
         }
@@ -260,7 +262,7 @@ class DatabaseExtractorService
         foreach ($columns as $col) {
             $normalized[] = (object)[
                 'name' => $col['name'],
-                'type' => $col['type_name'], // e.g., 'varchar', 'integer'
+                'type' => $col['type_name'],
                 'notnull' => !$col['nullable'],
                 'pk' => in_array($col['name'], $pkColumns),
                 'unique' => in_array($col['name'], $uniqueColumns),
@@ -275,21 +277,37 @@ class DatabaseExtractorService
     {
         $normalized = [];
         $fks = Schema::connection('dynamic_extract')->getForeignKeys($tableName);
+        $indexes = Schema::connection('dynamic_extract')->getIndexes($tableName);
 
         // O metodo getForeignKeys devolve um array para as colunas da tabela principal e outro para as colunas da tabela estrangeira
         // Percorrer as colunas de cada chave e criar o objeto com a associacao
         // (from - coluna na tabela a ser analisada, table - tabela da coluna onde liga a chave estrangeira, to - coluna onde liga a chave estrangeira)
         foreach ($fks as $fk) {
             foreach ($fk['columns'] as $index => $localColumn) {
+                $isOneToOne = false;
+                foreach ($indexes as $dbIndex) {
+                    //  1:1 se a coluna tem o seu proprio index
+                    if (
+                        $dbIndex['unique'] === true &&
+                        count($dbIndex['columns']) === 1 &&
+                        $dbIndex['columns'][0] === $localColumn
+                    ) {
+                        $isOneToOne = true;
+                        break;
+                    }
+                }
+                $type = $isOneToOne ? '1:1' : '1:N';
+
                 $normalized[] = (object)[
                     'from' => $localColumn,
                     'table' => $fk['foreign_table'],
                     'to' => $fk['foreign_columns'][$index], // Obter coluna na tabela estrangeira correspondente à coluna na tabela principal
+                    'type' => $type, // '1:1' or '1:N'
                 ];
+
             }
         }
         return $normalized;
     }
-
 
 }
