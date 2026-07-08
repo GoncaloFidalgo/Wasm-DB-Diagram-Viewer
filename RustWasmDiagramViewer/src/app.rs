@@ -68,8 +68,16 @@ pub struct AppState {
 }
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 pub struct OptionsMenu {
+    #[serde(skip)]
+    pub diagram_theme: DiagramTheme,
     pub cardinality_display: CardinalityDisplay,
     pub description_indicator: DescriptionIndicator,
+}
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy, Default)]
+pub enum DiagramTheme {
+    #[default]
+    Light,
+    Dark,
 }
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Clone, Copy, Default)]
 pub enum CardinalityDisplay {
@@ -344,6 +352,7 @@ impl Default for TemplateApp {
                 selected: Vec::new(),
             },
             options_menu: OptionsMenu {
+                diagram_theme: DiagramTheme::Dark,
                 cardinality_display: CardinalityDisplay::SelectedOnly,
                 description_indicator: DescriptionIndicator::All,
             },
@@ -383,18 +392,29 @@ pub struct Relation {
 }
 
 // Constantes para definir cores
+const PRIMARY_KEY_DARK: Color32 = Color32::from_rgb(220, 180, 50);
+const FOREIGN_KEY_DARK: Color32 = Color32::from_rgb(100, 150, 220);
+const TABLE_BG_DARK: Color32 = Color32::from_rgb(22, 22, 25);
+const TABLE_BORDER_DARK: Color32 = Color32::from_gray(80);
+const HEADER_BG_DARK: Color32 = Color32::from_rgb(28, 28, 33);
+const HEADER_HOVER_DARK: Color32 = Color32::from_rgb(38, 38, 46);
+const HEADER_TEXT_DARK: Color32 = Color32::from_gray(240);
+const COL_NAME_DARK: Color32 = Color32::from_gray(228);
+const COL_TYPE_DARK: Color32 = Color32::from_gray(140);
+const NULL_TEXT_DARK: Color32 = Color32::from_rgb(155, 155, 175);
+const NULL_BG_DARK: Color32 = Color32::from_rgb(40, 40, 52);
 
-const PRIMARY_KEY: Color32 = Color32::from_rgb(220, 180, 50); // Dourado
-const FOREIGN_KEY: Color32 = Color32::from_rgb(100, 150, 220); // Azul escuro
-const TABLE_BG: Color32 = Color32::from_rgb(22, 22, 25);
-const TABLE_BORDER: Color32 = Color32::from_gray(55);
-const HEADER_BG: Color32 = Color32::from_rgb(28, 28, 33);
-const HEADER_HOVER: Color32 = Color32::from_rgb(38, 38, 46);
-const HEADER_TEXT: Color32 = Color32::from_rgb(240, 240, 240);
-const COL_NAME: Color32 = Color32::from_rgb(228, 228, 228);
-const COL_TYPE: Color32 = Color32::from_gray(140);
-const NULL_TEXT: Color32 = Color32::from_rgb(155, 155, 175);
-const NULL_BG: Color32 = Color32::from_rgb(40, 40, 52);
+const PRIMARY_KEY_LIGHT: Color32 = Color32::from_rgb(205, 165, 35);
+const FOREIGN_KEY_LIGHT: Color32 = Color32::from_rgb(85, 135, 205);
+const TABLE_BG_LIGHT: Color32 = Color32::from_rgb(233, 233, 230);
+const TABLE_BORDER_LIGHT: Color32 = Color32::from_gray(175);
+const HEADER_BG_LIGHT: Color32 = Color32::from_rgb(227, 227, 222);
+const HEADER_HOVER_LIGHT: Color32 = Color32::from_rgb(217, 217, 209);
+const HEADER_TEXT_LIGHT: Color32 = Color32::from_gray(15);
+const COL_NAME_LIGHT: Color32 = Color32::from_gray(27);
+const COL_TYPE_LIGHT: Color32 = Color32::from_gray(115);
+const NULL_TEXT_LIGHT: Color32 = Color32::from_rgb(100, 100, 80);
+const NULL_BG_LIGHT: Color32 = Color32::from_rgb(215, 215, 203);
 
 // Constantes para definir tamanhos dos elementos das tabelas
 const HEADER_SIZE: f32 = 40.0;
@@ -416,10 +436,11 @@ impl Table {
         selected: &mut Vec<Selected>,
         relations: &Vec<Relation>,
         description_indicator: DescriptionIndicator,
+        diagram_theme: DiagramTheme
     ) -> (Vec2, Option<usize>) {
         let table_width = ctx.fonts_mut(|f| {
             let header_width = 30.0 + f
-                .layout_no_wrap(self.name.clone(), FontId::proportional(18.0), HEADER_TEXT)
+                .layout_no_wrap(self.name.clone(), FontId::proportional(18.0), Color32::BLACK)
                 .rect
                 .width();
 
@@ -536,23 +557,23 @@ impl Table {
                 ctx.set_transform_layer(ui.layer_id(), *scene_transform);
                 ui.set_clip_rect(Rect::EVERYTHING);
                 Frame::new()
-                    .fill(TABLE_BG)
-                    .stroke(Stroke::new(2.0, if table_selected {Color32::BLUE} else if highlight_table {Color32::GREEN} else {TABLE_BORDER}))
+                    .fill(if diagram_theme == DiagramTheme::Light {TABLE_BG_LIGHT} else {TABLE_BG_DARK})
+                    .stroke(Stroke::new(2.0, if table_selected {Color32::BLUE} else if highlight_table {Color32::GREEN} else {if diagram_theme == DiagramTheme::Light {TABLE_BORDER_LIGHT} else {TABLE_BORDER_DARK}}))
                     .shadow(Shadow {
-                        offset: [0, 6],
+                        offset: [4, 4],
                         blur: 18,
                         spread: 0,
-                        color: Color32::from_black_alpha(90),
+                        color: Color32::from_black_alpha(60),
                     }).show(ui, |ui| {
                         let mut area_response = ui.allocate_ui(Vec2::ZERO, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
-                            if self.header_ui(ui, table_width, description_indicator).clicked() {
+                            if self.header_ui(ui, table_width, description_indicator, diagram_theme).clicked() {
                                 if !ctx.input(|i| {i.modifiers.command_only()}) || read_only {selected.clear();}
                                 toggle_selected(selected, Selected::Table { table: id, column: None }, 0, read_only);
                             }
                             ui.add_space(2.0);
                             for (col_idx, column) in self.columns.iter().enumerate() {
-                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}, highlight_columns.contains(&col_idx), description_indicator).clicked()  {
+                                if column.ui(ui, table_width, id, col_idx, match column_selected {None => {false} Some(idx) => {idx == col_idx}}, highlight_columns.contains(&col_idx), description_indicator, diagram_theme).clicked()  {
                                     if !ctx.input(|i| {i.modifiers.command_only()}) || read_only {
                                         selected.clear();
                                         toggle_selected(selected, Selected::Table { table: id, column: Some(col_idx) }, 0, read_only);
@@ -606,7 +627,7 @@ impl Table {
         return (delta_used, drag_stopped_on);
     }
 
-    fn header_ui(&mut self, ui: &mut Ui, table_width: f32, description_indicator: DescriptionIndicator) -> Response {
+    fn header_ui(&mut self, ui: &mut Ui, table_width: f32, description_indicator: DescriptionIndicator, diagram_theme: DiagramTheme) -> Response {
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, HEADER_SIZE),
             Sense::click(),
@@ -615,9 +636,9 @@ impl Table {
         if response.hovered() { ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand); }
 
         let bg = if response.hovered() {
-            HEADER_HOVER
+            if diagram_theme == DiagramTheme::Light {HEADER_HOVER_LIGHT} else {HEADER_HOVER_DARK}
         } else {
-            HEADER_BG
+            if diagram_theme == DiagramTheme::Light {HEADER_BG_LIGHT} else {HEADER_BG_DARK}
         };
         ui.painter().rect_filled(rect, CornerRadius::ZERO, bg);
         ui.painter().text(
@@ -625,7 +646,7 @@ impl Table {
             Align2::CENTER_CENTER,
             &self.name,
             FontId::proportional(18.0),
-            HEADER_TEXT,
+            if diagram_theme == DiagramTheme::Light {HEADER_TEXT_LIGHT} else {HEADER_TEXT_DARK},
         );
         match description_indicator {
             DescriptionIndicator::None => {}
@@ -652,7 +673,13 @@ impl Table {
 }
 
 impl Column {
-    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool, highlight_for_relation: bool, description_indicator: DescriptionIndicator) -> Response {
+    fn ui(&self, ui: &mut Ui, table_width: f32, table_id: usize, col_id: usize, col_selected: bool, highlight_for_relation: bool, description_indicator: DescriptionIndicator, diagram_theme: DiagramTheme) -> Response {
+        let (primary_key, foreign_key, col_name, col_type, null_text, null_bg) = if diagram_theme == DiagramTheme::Light {
+            (PRIMARY_KEY_LIGHT, FOREIGN_KEY_LIGHT, COL_NAME_LIGHT, COL_TYPE_LIGHT, NULL_TEXT_LIGHT, NULL_BG_LIGHT)
+        } else {
+            (PRIMARY_KEY_DARK, FOREIGN_KEY_DARK, COL_NAME_DARK, COL_TYPE_DARK, NULL_TEXT_DARK, NULL_BG_DARK)
+        };
+
         let (rect, response) = ui.allocate_exact_size(
             vec2(table_width, COL_SIZE),
             Sense::click(),
@@ -668,16 +695,16 @@ impl Column {
         });
 
         if col_selected {
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgb_additive(0, 0, 60));
+            ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(0, 0, 255, 60));
         } else if highlight_for_relation {
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgb(0, 60, 0));
+            ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(0, 255, 0, 60));
         }
 
         if response.hovered() {
             ui.painter().rect_filled(
                 rect.shrink2(vec2(6.0, 1.0)),
                 CornerRadius::same(4),
-                Color32::from_rgba_unmultiplied(255, 255, 255, 7),
+                Color32::from_rgba_unmultiplied(128, 128, 128, 20),
             );
             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
         }
@@ -689,9 +716,9 @@ impl Column {
 
         if !self.key_type.is_empty() {
             let key_color = if self.key_type == "PK" {
-                PRIMARY_KEY
+                primary_key
             } else {
-                FOREIGN_KEY
+                foreign_key
             };
 
             let key_galley = painter.layout_no_wrap(
@@ -714,13 +741,13 @@ impl Column {
         let name_galley = painter.layout_no_wrap(
             self.name.clone(),
             FontId::proportional(13.0),
-            COL_NAME,
+            col_name,
         );
 
         painter.galley(
             pos2(left_x, rect.center().y - name_galley.rect.height() * 0.5),
             name_galley.clone(),
-            COL_NAME,
+            col_name,
         );
         left_x += name_galley.rect.width() + 6.0;
 
@@ -752,42 +779,42 @@ impl Column {
         let type_galley = painter.layout_no_wrap(
             self.column_type.clone(),
             FontId::proportional(11.5),
-            COL_TYPE,
+            col_type,
         );
 
         let type_y = rect.center().y - type_galley.rect.height() * 0.5;
         painter.galley(
             pos2(right_x - type_galley.rect.width(), type_y),
             type_galley.clone(),
-            COL_TYPE,
+            col_type,
         );
         right_x -= type_galley.rect.width() + 6.0;
 
         if self.nullable {
             let null_galley =
-                painter.layout_no_wrap("NULL".to_owned(), FontId::monospace(10.0), NULL_TEXT);
+                painter.layout_no_wrap("NULL".to_owned(), FontId::monospace(10.0), null_text);
             let pad = vec2(4.0, 2.0);
             let badge_size = null_galley.rect.size() + pad * 2.0;
             let badge_rect = Rect::from_min_size(
                 pos2(right_x - badge_size.x, rect.center().y - badge_size.y * 0.5),
                 badge_size,
             );
-            painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
-            painter.galley(badge_rect.min + pad, null_galley, NULL_TEXT);
+            painter.rect_filled(badge_rect, CornerRadius::same(3), null_bg);
+            painter.galley(badge_rect.min + pad, null_galley, null_text);
             right_x -= badge_size.x + 6.0;
         }
 
         if self.unique {
             let unique_galley =
-                painter.layout_no_wrap("UNIQUE".to_owned(), FontId::monospace(10.0), NULL_TEXT);
+                painter.layout_no_wrap("UNIQUE".to_owned(), FontId::monospace(10.0), null_text);
             let pad = vec2(4.0, 2.0);
             let badge_size = unique_galley.rect.size() + pad * 2.0;
             let badge_rect = Rect::from_min_size(
                 pos2(right_x - badge_size.x, rect.center().y - badge_size.y * 0.5),
                 badge_size,
             );
-            painter.rect_filled(badge_rect, CornerRadius::same(3), NULL_BG);
-            painter.galley(badge_rect.min + pad, unique_galley, NULL_TEXT);
+            painter.rect_filled(badge_rect, CornerRadius::same(3), null_bg);
+            painter.galley(badge_rect.min + pad, unique_galley, null_text);
         }
         response
     }
@@ -1024,6 +1051,16 @@ impl TemplateApp {
             .show(ctx, |ui| {
                 ui.collapsing(RichText::new("Diagram Options").strong().size(20.0), |ui| {
                     ui.add_space(10.0);
+
+                    ui.label(RichText::new("Diagram Theme").strong().size(16.5));
+                    ui.add_space(5.0);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(50.0, 0.0);
+                        ui.radio_value(&mut self.options_menu.diagram_theme, DiagramTheme::Light, "Light Mode");
+                        ui.radio_value(&mut self.options_menu.diagram_theme, DiagramTheme::Dark, "Dark Mode");
+                    });
+
+                    ui.add_space(20.0);
 
                     ui.label(RichText::new("Cardinality Display").strong().size(16.5));
                     ui.add_space(5.0);
@@ -1283,10 +1320,10 @@ impl TemplateApp {
                     m.areas_mut().move_to_top(area.layer());
                 });
                 area.show(ui.ctx(), |ui| {
-                    draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
+                    draw_interact_relation(ui, ui.painter(), scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display, self.options_menu.diagram_theme);
                 });
             } else {
-                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display);
+                draw_interact_relation(ui, painter, scene_transform, &mut self.selected, self.tables[relation.tables[0]].columns[relation.columns[0]].unique, self.tables[relation.tables[0]].columns[relation.columns[0]].nullable, self.read_only, line_width, table_proximity_limit, notation_size, interact_hitbox_size, &mut delta_used, &mut drag_stopped, rela_idx, relation, &mut diagram_interacted, self.options_menu.cardinality_display, self.options_menu.diagram_theme);
             }
         }
 
@@ -1409,7 +1446,7 @@ impl TemplateApp {
     }
 }
 
-fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation, diagram_interacted: &mut bool, cardinality_display: CardinalityDisplay) {
+fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransform, selected: &mut Vec<Selected>, unique: bool, nullable: bool, read_only: bool, line_width: f32, table_proximity_limit: f32, notation_size: f32, interact_hitbox_size: f32, delta_used: &mut Vec2, drag_stopped: &mut bool, rela_idx: usize, relation: &mut Relation, diagram_interacted: &mut bool, cardinality_display: CardinalityDisplay, diagram_theme: DiagramTheme) {
     let mut highlight_relation = false;
     for select in selected.iter() {
         match select {
@@ -1435,7 +1472,7 @@ fn draw_interact_relation(ui: &Ui, painter: &Painter, scene_transform: TSTransfo
     } else if highlight_relation {
         Stroke::new(line_width, Color32::GREEN)
     } else {
-        Stroke::new(line_width, Color32::from_gray(80))
+        Stroke::new(line_width, if diagram_theme == DiagramTheme::Light {Color32::from_gray(175)} else {Color32::from_gray(80)})
     };
 
     // Obter os retângulos para ligar a relação
@@ -2161,7 +2198,7 @@ impl eframe::App for TemplateApp {
             // Desenhar as tabelas
             for (i, table) in self.tables.iter_mut().enumerate() {
                 let old_transform = self.scene_transform;
-                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected, &self.relations, self.options_menu.description_indicator);
+                let (delta_received, drag_stopped_on_received) = table.ui(ctx, i, &mut self.scene_transform, self.read_only, &mut self.selected, &self.relations, self.options_menu.description_indicator, self.options_menu.diagram_theme);
                 if delta_received != Vec2::ZERO {
                     delta_used = delta_received;
                 }
